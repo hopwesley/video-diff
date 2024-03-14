@@ -82,6 +82,10 @@ func main() {
 	}
 }
 
+const (
+	PercentForMaxDepthToTimeAlign = 0.2 //20%of all frames to find the time start
+)
+
 func mainRun(_ *cobra.Command, _ []string) {
 
 	videoA, videoB, err := readFile(param.aFile, param.bFile)
@@ -101,10 +105,52 @@ func mainRun(_ *cobra.Command, _ []string) {
 	bHisGramFloat := distributeGradientMagnitude(bHisGram, threshold)
 
 	idxA, idxB := findTimeStartOfFrame(aHisGramFloat, bHisGramFloat)
+
 	if idxB < 0 || idxA < 0 {
 		panic("find time start frame failed")
 	}
 	fmt.Println("time align =>", idxA, idxB)
+	var startA, startB = 0, 0
+	if idxA > idxB {
+		startA = idxA - idxB
+		startB = 0
+	} else {
+		startB = idxB - idxA
+		startA = 0
+	}
+	fmt.Println("time align =>", startA, startB)
+
+	saveVideoFromFrame(videoA, startA, "align_"+param.aFile)
+	saveVideoFromFrame(videoB, startB, "align_"+param.bFile)
+}
+
+func saveVideoFromFrame(videoCapture *gocv.VideoCapture, startFrameIndex int, outputFile string) {
+	// 设置视频捕获的位置
+	videoCapture.Set(gocv.VideoCapturePosFrames, float64(startFrameIndex))
+
+	// 获取视频的FPS和分辨率，以便于VideoWriter使用
+	fps := videoCapture.Get(gocv.VideoCaptureFPS)
+	width := int(videoCapture.Get(gocv.VideoCaptureFrameWidth))
+	height := int(videoCapture.Get(gocv.VideoCaptureFrameHeight))
+
+	// 初始化VideoWriter
+	writer, err := gocv.VideoWriterFile(outputFile, "mp4v", fps, width, height, true)
+	if err != nil {
+		fmt.Println("Error initializing video writer:", err)
+		return
+	}
+	defer writer.Close()
+
+	// 读取并写入帧
+	mat := gocv.NewMat()
+	defer mat.Close()
+	for {
+		if ok := videoCapture.Read(&mat); !ok || mat.Empty() {
+			break
+		}
+		writer.Write(mat)
+	}
+	fmt.Println("Video saved to:", outputFile)
 }
 
 func readFile(aFile, bFile string) (*gocv.VideoCapture, *gocv.VideoCapture, error) {
@@ -121,9 +167,24 @@ func readFile(aFile, bFile string) (*gocv.VideoCapture, *gocv.VideoCapture, erro
 	return av, bv, nil
 }
 
-func findTimeStartOfFrame(aHisGram, bHisGram [][]float64) (int, int) {
-	videoALength := len(aHisGram) // Video A frame count
-	videoBLength := len(bHisGram) // Video B frame count
+func findTimeStartOfFrame(aHisGramFloat, bHisGramFloat [][]float64) (int, int) {
+
+	var maxDepth = 0
+	var longGram [][]float64
+	var shortGram [][]float64
+	if len(aHisGramFloat) < len(bHisGramFloat) {
+		maxDepth = len(bHisGramFloat)
+		longGram = bHisGramFloat
+		shortGram = aHisGramFloat
+	} else {
+		maxDepth = len(aHisGramFloat)
+		longGram = aHisGramFloat
+		shortGram = bHisGramFloat
+	}
+	maxDepth = int(float32(maxDepth) * PercentForMaxDepthToTimeAlign)
+
+	videoALength := len(longGram)  // Video A frame count
+	videoBLength := len(shortGram) // Video B frame count
 
 	// Initialize a 2D array to store the NCC values
 	nccValues := make([][]float64, videoALength)
@@ -132,8 +193,11 @@ func findTimeStartOfFrame(aHisGram, bHisGram [][]float64) (int, int) {
 	}
 
 	// Iterate over all frame pairs of Video A and Video B, calculate their NCC values
-	for i, histogramA := range aHisGram {
-		for j, histogramB := range bHisGram {
+	for i, histogramA := range longGram {
+		if i > maxDepth {
+			break
+		}
+		for j, histogramB := range shortGram {
 			nccValues[i][j] = calculateNCC(histogramA, histogramB)
 		}
 	}
@@ -230,14 +294,15 @@ func projectGradient(gradient, faceCenter [3]float64) float64 {
 // 该函数将被用于量化梯度函数中
 func quantizeGradients(gradX, gradY, gradT gocv.Mat) []int {
 	histogram := make([]int, 20)
-	fmt.Println("gradX size:", gradX.Rows(), gradX.Cols(), gradX.GetFloatAt(1279, 700))
-	fmt.Println("gradY size:", gradY.Rows(), gradY.Cols())
-	fmt.Println("gradT size:", gradT.Rows(), gradT.Cols())
+
+	gradTFloat := gocv.NewMat()
+	gradT.ConvertTo(&gradTFloat, gocv.MatTypeCV32F) // 转换为32位浮点类型
+	defer gradTFloat.Close()
 
 	for row := 0; row < gradX.Rows(); row++ {
 		for col := 0; col < gradX.Cols(); col++ {
 			// 获取梯度向量
-			gx, gy, gt := gradX.GetFloatAt(row, col), gradY.GetFloatAt(row, col), gradT.GetFloatAt(row, col)
+			gx, gy, gt := gradX.GetFloatAt(row, col), gradY.GetFloatAt(row, col), gradTFloat.GetFloatAt(row, col)
 			gradient := normalize([3]float64{float64(gx), float64(gy), float64(gt)})
 
 			// 初始化变量以找到最大的点积值
