@@ -83,7 +83,7 @@ func main() {
 }
 
 const (
-	PercentForMaxDepthToTimeAlign = 0.2 //20%of all frames to find the time start
+	PercentForMaxDepthToTimeAlign = 0.3 //20%of all frames to find the time start
 )
 
 func mainRun(_ *cobra.Command, _ []string) {
@@ -122,6 +122,8 @@ func mainRun(_ *cobra.Command, _ []string) {
 
 	saveVideoFromFrame(videoA, startA, "align_"+param.aFile)
 	saveVideoFromFrame(videoB, startB, "align_"+param.bFile)
+	aHisGramFloat = aHisGramFloat[startA:]
+	bHisGramFloat = bHisGramFloat[startB:]
 }
 
 func saveVideoFromFrame(videoCapture *gocv.VideoCapture, startFrameIndex int, outputFile string) {
