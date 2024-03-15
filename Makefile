@@ -9,7 +9,7 @@ BINARY_NAME=golf
 
 all: build
 build:
-	$(GOBUILD) -o $(BINARY_NAME) main.go
+	$(GOBUILD) -o $(BINARY_NAME) *.go
 clean:
 	$(GOCLEAN)
 	rm -f $(BINARY_NAME)
