@@ -6,6 +6,28 @@ import (
 	"math"
 )
 
+type Point struct {
+	X float64
+	Y float64
+}
+
+func (p Point) Distance(center Point) Point {
+	return Point{
+		X: p.X - center.X,
+		Y: p.Y - center.Y,
+	}
+}
+
+func (p Point) GaussianKernel(center Point, sigma float64) float64 {
+	dx := p.X - center.X
+	dy := p.Y - center.Y
+	d := dx*dx + dy*dy
+	return math.Exp(-d / (2 * sigma * sigma))
+}
+func normalize(vertex [3]float64) [3]float64 {
+	length := math.Sqrt(vertex[0]*vertex[0] + vertex[1]*vertex[1] + vertex[2]*vertex[2])
+	return [3]float64{vertex[0] / length, vertex[1] / length, vertex[2] / length}
+}
 func saveVideoFromFrame(videoCapture *gocv.VideoCapture, startFrameIndex int, outputFile string) {
 	// 设置视频捕获的位置
 	videoCapture.Set(gocv.VideoCapturePosFrames, float64(startFrameIndex))
