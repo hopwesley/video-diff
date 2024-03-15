@@ -164,7 +164,7 @@ func parseHistogram(video *gocv.VideoCapture) ([][]int, error) {
 		prevFrame = grayFrame.Clone()
 
 		// Quantize gradients into a histogram using an icosahedron
-		histogram := quantizeGradients(gradX, gradY, gradT)
+		histogram := quantizeGradients(&gradX, &gradY, &gradT)
 		histograms = append(histograms, histogram) // 将当前帧的直方图添加到数组中
 
 		gradX.Close()

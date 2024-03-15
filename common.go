@@ -74,18 +74,26 @@ func projectGradient(gradient, faceCenter [3]float64) float64 {
 }
 
 // 该函数将被用于量化梯度函数中
-func quantizeGradients(gradX, gradY, gradT gocv.Mat) []int {
+func quantizeGradients(gradX, gradY, gradT *gocv.Mat) []int {
 	histogram := make([]int, 20)
 
-	gradTFloat := gocv.NewMat()
-	gradT.ConvertTo(&gradTFloat, gocv.MatTypeCV32F) // 转换为32位浮点类型
-	defer gradTFloat.Close()
+	if gradT != nil {
+		var gradTFloat = gocv.NewMat()
+		gradT.ConvertTo(&gradTFloat, gocv.MatTypeCV32F) // 转换为32位浮点类型
+		gradT.Close()
+		gradT = &gradTFloat
+		defer gradT.Close()
+	}
 
 	for row := 0; row < gradX.Rows(); row++ {
 		for col := 0; col < gradX.Cols(); col++ {
 			// 获取梯度向量
-			gx, gy, gt := gradX.GetFloatAt(row, col), gradY.GetFloatAt(row, col), gradTFloat.GetFloatAt(row, col)
-			gradient := normalize([3]float64{float64(gx), float64(gy), float64(gt)})
+			gx, gy := gradX.GetFloatAt(row, col), gradY.GetFloatAt(row, col)
+			var gt = 0.00
+			if gradT != nil {
+				gt = float64(gradT.GetFloatAt(row, col))
+			}
+			gradient := normalize([3]float64{float64(gx), float64(gy), gt})
 
 			// 初始化变量以找到最大的点积值
 			maxProjection := math.Inf(-1)
