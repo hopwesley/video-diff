@@ -17,7 +17,9 @@ func (p Point) Distance(center Point) Point {
 		Y: p.Y - center.Y,
 	}
 }
-
+func (p Point) String() string {
+	return fmt.Sprintf("{X:%.2f,Y:%.2f}", p.X, p.Y)
+}
 func (p Point) GaussianKernel(center Point, sigma float64) float64 {
 	dx := p.X - center.X
 	dy := p.Y - center.Y

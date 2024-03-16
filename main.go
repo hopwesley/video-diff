@@ -25,6 +25,7 @@ const (
 	Cell_M           = 2
 	Cell_m           = 4
 	SigmaForBaseSize = 6
+	LevelOfDes       = 3
 )
 
 var rootCmd = &cobra.Command{
@@ -101,11 +102,48 @@ func mainRun(_ *cobra.Command, _ []string) {
 	}
 	defer videoA.Close()
 	defer videoB.Close()
-	procHistogram(videoA)
-	procHistogram(videoB)
+	var idx = 0
+	//for {
+	idx++
+	desOfA := procHistogram(fmt.Sprintf("tmp/A_%d", idx), videoA)
+	if desOfA == nil {
+		fmt.Println("video a finished")
+		//break
+	}
+	//desOfB := procHistogram(fmt.Sprintf("tmp/B_%d", idx), videoB)
+	//if desOfB == nil {
+	//	fmt.Println("video b finished")
+	//	//break
+	//}
+	//calculateW(desOfA, desOfB)
+	//}
 }
 
-func procHistogram(video *gocv.VideoCapture) {
+func calculateW(desOfA [][][]float64, desOfB [][][]float64) float64 {
+	var w float64 = 0
+	var weight = 0
+	for level := 0; level < LevelOfDes; level++ {
+		// 遍历每个尺度级别
+		histogramsA := desOfA[level]
+		histogramsB := desOfB[level]
+		weight = 1 << level
+
+		// 确保尺度级别的直方图数量相匹配
+		if len(histogramsA) != len(histogramsB) {
+			fmt.Println("Warning: Histogram count mismatch between videos at level", level)
+			continue
+		}
+		for i := range histogramsA {
+			ncc := calculateNCC(histogramsA[i], histogramsB[i])
+			// 计算每对直方图的NCC值，并累加到w
+			w += ncc * float64(weight)
+		}
+	}
+
+	return w
+}
+
+func procHistogram(prefix string, video *gocv.VideoCapture) [][][]float64 {
 	width := video.Get(gocv.VideoCaptureFrameWidth)
 	height := video.Get(gocv.VideoCaptureFrameHeight)
 	var center Point
@@ -118,21 +156,27 @@ func procHistogram(video *gocv.VideoCapture) {
 	var frame = gocv.NewMat()
 	if ok := video.Read(&frame); !ok || frame.Empty() {
 		frame.Close()
-		return
+		return nil
 	}
 
 	// 转换为灰度图
 	gray := gocv.NewMat()
 	gocv.CvtColor(frame, &gray, gocv.ColorBGRToGray)
 	frame.Close()
-
-	histogramForFrame := procOneFrameForHistogram(gray, center, BaseSizeOfPixel, SigmaForBaseSize)
-	fmt.Println("histogram for one frame:=>", histogramForFrame)
+	Descriptor := make([][][]float64, LevelOfDes)
+	for l := 0; l < LevelOfDes; l++ {
+		timer := 1 << l
+		histogramForFrame := procOneFrameForHistogram(gray, center, timer*BaseSizeOfPixel, float64(timer*SigmaForBaseSize))
+		Descriptor[l] = histogramForFrame
+	}
+	filename := fmt.Sprintf(prefix + "_frame.png")
+	gocv.IMWrite(filename, gray)
 	gray.Close()
+	return Descriptor
 }
 
 func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float64) [][]float64 {
-
+	fmt.Println("center of interest:", center)
 	// 获取感兴趣的区域
 	roiCenter, roi := getRegionOfInterest(gray, center, size)
 	// 划分网格
@@ -146,8 +190,10 @@ func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float
 				X: float64(j*cell.Cols() + cell.Cols()/2),
 				Y: float64(i*cell.Rows() + cell.Rows()/2),
 			}
+			fmt.Printf("\ncenter of cell[row:%d, cell:%d]: center:%s\n", i, j, cellCenterInRoI)
+
 			hist := calculateHistogramForCell(cell, Cell_m, cellCenterInRoI, roiCenter, sigma)
-			fmt.Printf("Cell [%d,%d] histogram: %v\n", i, j, hist)
+			//fmt.Printf("Cell [%d,%d] histogram: %v\n", i, j, hist)
 			cell.Close() // 释放资源
 			hists = append(hists, hist)
 		}
@@ -208,6 +254,8 @@ func calculateHistogramForCell(cell gocv.Mat, m int, centerOfCell, centerOfRoi P
 				X: centerOfCell.X + float64(j*cellSize+cellSize/2),
 				Y: centerOfCell.Y + float64(i*cellSize+cellSize/2),
 			}
+			//fmt.Printf("\ncenter of block[row:%d, block:%d]: center:%s\n", i, j, centerOfBlock)
+
 			// 提取小块
 			block := cell.Region(image.Rect(j*cellSize, i*cellSize, (j+1)*cellSize, (i+1)*cellSize))
 			// 计算小块的直方图
