@@ -110,37 +110,92 @@ func mainRun(_ *cobra.Command, _ []string) {
 		fmt.Println("video a finished")
 		//break
 	}
-	//desOfB := procHistogram(fmt.Sprintf("tmp/B_%d", idx), videoB)
-	//if desOfB == nil {
-	//	fmt.Println("video b finished")
-	//	//break
-	//}
-	//calculateW(desOfA, desOfB)
+	desOfB := procHistogram(fmt.Sprintf("tmp/B_%d", idx), videoB)
+	if desOfB == nil {
+		fmt.Println("video b finished")
+		//break
+	}
+
+	for l := 0; l < LevelOfDes; l++ {
+		w := wValueForOneLevel(desOfA[l], desOfB[l])
+		timer := 1 << l
+		//space := timer * BaseSizeOfPixel / (Cell_M * Cell_m)
+		wbi := bilinearInterpolate(w, timer*BaseSizeOfPixel)
+	}
+
 	//}
 }
 
-func calculateW(desOfA [][][]float64, desOfB [][][]float64) float64 {
-	var w float64 = 0
-	var weight = 0
-	for level := 0; level < LevelOfDes; level++ {
-		// 遍历每个尺度级别
-		histogramsA := desOfA[level]
-		histogramsB := desOfB[level]
-		weight = 1 << level
+func bilinearInterpolate(input [][]float64, outputSize int) [][]float64 {
+	output := make([][]float64, outputSize)
+	for i := range output {
+		output[i] = make([]float64, outputSize)
+	}
 
-		// 确保尺度级别的直方图数量相匹配
-		if len(histogramsA) != len(histogramsB) {
-			fmt.Println("Warning: Histogram count mismatch between videos at level", level)
-			continue
-		}
-		for i := range histogramsA {
-			ncc := calculateNCC(histogramsA[i], histogramsB[i])
-			// 计算每对直方图的NCC值，并累加到w
-			w += ncc * float64(weight)
+	scaleX := float64(len(input[0])) / float64(outputSize)
+	scaleY := float64(len(input)) / float64(outputSize)
+
+	for y := 0; y < outputSize; y++ {
+		for x := 0; x < outputSize; x++ {
+			srcX := float64(x) * scaleX
+			srcY := float64(y) * scaleY
+
+			x0 := int(math.Floor(srcX))
+			x1 := x0 + 1
+			if x1 >= len(input[0]) {
+				x1 = len(input[0]) - 1
+			}
+
+			y0 := int(math.Floor(srcY))
+			y1 := y0 + 1
+			if y1 >= len(input) {
+				y1 = len(input) - 1
+			}
+
+			fracX := srcX - float64(x0)
+			fracY := srcY - float64(y0)
+
+			p0 := input[y0][x0]*(1-fracX) + input[y0][x1]*fracX
+			p1 := input[y1][x0]*(1-fracX) + input[y1][x1]*fracX
+
+			output[y][x] = p0*(1-fracY) + p1*fracY
 		}
 	}
 
-	return w
+	return output
+}
+
+func wValueForOneLevel(desAOneLevel, desBOneLevel [][]float64) [][]float64 {
+	// Assuming that desA and desB are [M][m*10] arrays where each cell contains m*10 blocks.
+	// Initialize wForLevel with the same structure as desA and desB.
+	wForLevel := make([][]float64, len(desAOneLevel))
+	for i := range wForLevel {
+		wForLevel[i] = make([]float64, len(desAOneLevel[i]))
+	}
+
+	// Iterate through each cell and block, computing the dissimilarity for each.
+	for i, cellA := range desAOneLevel {
+		cellB := desBOneLevel[i]
+		for j := 0; j < len(cellA); j += 10 {
+			// Here we assume that each block is represented by 10 histogram bins.
+			histA := cellA[j : j+10]
+			histB := cellB[j : j+10]
+			wForLevel[i][j/10] = euclideanDistance(histA, histB) // Store dissimilarity for each block
+		}
+	}
+
+	// Return the dissimilarity matrix for the level
+	return wForLevel
+}
+
+// euclideanDistance computes the Euclidean distance between two vectors.
+func euclideanDistance(vec1, vec2 []float64) float64 {
+	sum := 0.0
+	for i := range vec1 {
+		diff := vec1[i] - vec2[i]
+		sum += diff * diff
+	}
+	return math.Sqrt(sum)
 }
 
 func procHistogram(prefix string, video *gocv.VideoCapture) [][][]float64 {
@@ -186,14 +241,12 @@ func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float
 	var hists [][]float64
 	for i, row := range cells {
 		for j, cell := range row {
-			cellCenterInRoI := Point{
-				X: float64(j*cell.Cols() + cell.Cols()/2),
-				Y: float64(i*cell.Rows() + cell.Rows()/2),
-			}
-			fmt.Printf("\ncenter of cell[row:%d, cell:%d]: center:%s\n", i, j, cellCenterInRoI)
+			topLeftX := float64(j * cell.Cols())
+			topLeftY := float64(i * cell.Rows())
+			topLeftOfCell := Point{X: topLeftX, Y: topLeftY}
+			fmt.Printf("\nleft top of cell[row:%d, cell:%d]:%s\n", i, j, topLeftOfCell)
 
-			hist := calculateHistogramForCell(cell, Cell_m, cellCenterInRoI, roiCenter, sigma)
-			//fmt.Printf("Cell [%d,%d] histogram: %v\n", i, j, hist)
+			hist := calculateHistogramForCell(cell, Cell_m, topLeftOfCell, roiCenter, sigma)
 			cell.Close() // 释放资源
 			hists = append(hists, hist)
 		}
@@ -243,21 +296,25 @@ func divideIntoCells(roi gocv.Mat, M int) [][]gocv.Mat {
 }
 
 // 这个函数的目标是量化cell中的梯度，并计算加权直方图。
-func calculateHistogramForCell(cell gocv.Mat, m int, centerOfCell, centerOfRoi Point, sigma float64) []float64 {
-	cellSize := cell.Rows() / m             // 获取小块的大小
+func calculateHistogramForCell(cell gocv.Mat, m int, topLeftOfCell, centerOfRoi Point, sigma float64) []float64 {
+	cellSize := cell.Rows()
+	blockSize := cellSize / m               // 获取小块的大小
 	weightedHist := make([]float64, 10*m*m) // 初始化加权直方图数组
 
 	for i := 0; i < m; i++ {
 		for j := 0; j < m; j++ {
 			// 计算小块的中心坐标
+			blockX := topLeftOfCell.X + float64(j*blockSize) // 这里cellSize已经是小block的尺寸
+			blockY := topLeftOfCell.Y + float64(i*blockSize) // 同上
+			// 计算block的中心坐标
 			centerOfBlock := Point{
-				X: centerOfCell.X + float64(j*cellSize+cellSize/2),
-				Y: centerOfCell.Y + float64(i*cellSize+cellSize/2),
+				X: blockX + float64(blockSize/2),
+				Y: blockY + float64(blockSize/2),
 			}
-			//fmt.Printf("\ncenter of block[row:%d, block:%d]: center:%s\n", i, j, centerOfBlock)
+			fmt.Printf("\n center of block[row:%d, block:%d]: center:%s\n", i, j, centerOfBlock)
 
 			// 提取小块
-			block := cell.Region(image.Rect(j*cellSize, i*cellSize, (j+1)*cellSize, (i+1)*cellSize))
+			block := cell.Region(image.Rect(j*blockSize, i*blockSize, (j+1)*blockSize, (i+1)*blockSize))
 			// 计算小块的直方图
 			blockHist := quantizeBlockGradients(block)
 			// 获取高斯权重
