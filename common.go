@@ -182,7 +182,7 @@ func norm2(hist []int) float64 {
 var tmpIdx = 0
 
 func saveMatAsImage(mat gocv.Mat, filename string) bool {
-	filename = fmt.Sprintf("%s_%d.png", filename, tmpIdx)
+	filename = fmt.Sprintf("tmp/%s_%d.png", filename, tmpIdx)
 	tmpIdx++
 
 	// 将16位的图像转换为8位

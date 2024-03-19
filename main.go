@@ -20,12 +20,11 @@ type startParam struct {
 
 const (
 	Version          = "0.1.1"
-	BaseSizeOfPixel  = 32
-	MaxSizeLevel     = 2
+	BaseSizeOfPixel  = 128
 	Cell_M           = 2
 	Cell_m           = 4
 	SigmaForBaseSize = 6
-	LevelOfDes       = 3
+	LevelOfDes       = 1
 )
 
 var rootCmd = &cobra.Command{
@@ -126,8 +125,7 @@ func mainRun(_ *cobra.Command, _ []string) {
 		w := wValueForOneLevel(desOfA[l], desOfB[l])
 		weight := 1 << l
 		wbi := bilinearInterpolate(w, weight*BaseSizeOfPixel)
-
-		fmt.Println("w value with weight:", wbi[16][16], normalizeAndConvertToImage(wbi, fmt.Sprintf("wbi_layer_%d.png", l)))
+		fmt.Println("w value with weight:", normalizeAndConvertToImage(wbi, fmt.Sprintf("tmp/wbi_layer_%d.png", l)))
 		//for y := 0; y < targetSize; y++ {
 		//	for x := 0; x < targetSize; x++ {
 		//		finalMap[y][x] += weight * wbi[y][x]
@@ -267,7 +265,6 @@ func procHistogram(video *gocv.VideoCapture) [][][]float64 {
 	gray := gocv.NewMat()
 	gocv.CvtColor(frame, &gray, gocv.ColorBGRToGray)
 	frame.Close()
-	fmt.Println("grayFrame Type:", gray.Type())
 	Descriptor := make([][][]float64, LevelOfDes)
 	for l := 0; l < LevelOfDes; l++ {
 		timer := 1 << l
@@ -283,7 +280,8 @@ func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float
 	fmt.Println("center of interest:", center)
 	// 获取感兴趣的区域
 	roiCenter, roi := getRegionOfInterest(gray, center, size)
-	//saveMatAsImage(roi, fmt.Sprintf("block/roi_%d_.png", tmpIdx))
+	saveMatAsImage(roi, "roi/roi")
+	fmt.Println("type of roi :=>", roi.Type())
 	// 划分网格
 	cells := divideIntoCells(roi, Cell_M)
 	roi.Close()
@@ -291,11 +289,12 @@ func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float
 	var hists [][]float64
 	for i, row := range cells {
 		for j, cell := range row {
-			//saveMatAsImage(cell, fmt.Sprintf("block/cell_%d_.png", tmpIdx))
+
 			topLeftX := float64(j * cell.Cols())
 			topLeftY := float64(i * cell.Rows())
+
 			topLeftOfCell := Point{X: topLeftX, Y: topLeftY}
-			//fmt.Printf("\nleft top of cell[row:%d, cell:%d]:%s\n", i, j, topLeftOfCell)
+			saveMatAsImage(cell, "cell/cell_"+topLeftOfCell.String())
 
 			hist := calculateHistogramForCell(cell, Cell_m, topLeftOfCell, roiCenter, sigma)
 			cell.Close() // 释放资源
@@ -366,7 +365,7 @@ func calculateHistogramForCell(cell gocv.Mat, m int, topLeftOfCell, centerOfRoi 
 
 			// 提取小块
 			block := cell.Region(image.Rect(j*blockSize, i*blockSize, (j+1)*blockSize, (i+1)*blockSize))
-			saveMatAsImage(block, "block/block")
+			saveMatAsImage(block, "block/block_"+centerOfBlock.String())
 			// 计算小块的直方图
 			blockHist := quantizeBlockGradients(block)
 			// 获取高斯权重
