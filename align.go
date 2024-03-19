@@ -5,11 +5,13 @@ import (
 	"github.com/spf13/cobra"
 	"gocv.io/x/gocv"
 	"math"
+	"sort"
 )
 
 const (
 	//PercentForMaxDepthToTimeAlign = 0.5 //20%of all frames to find the time start
 	PrefixForAlignedFile = "align_"
+	MaxPairToMatch       = 3
 )
 
 var alignCmd = &cobra.Command{
@@ -26,10 +28,33 @@ func init() {
 	flags := alignCmd.Flags()
 
 	flags.StringVarP(&param.rawAFile, "source",
-		"a", "A.mp4", "golf -s A.mp4")
+		"a", "A.mp4", "golf -a A.mp4")
 
 	flags.StringVarP(&param.rawBFile, "dest",
-		"b", "B.mp4", "golf -d B.mp4")
+		"b", "B.mp4", "golf -b B.mp4")
+	flags.IntVarP(&param.alignGap, "gap", "g", 60, "-g gap about similarity center")
+}
+func saveAlign(idx int, match [2]int, videoA, videoB *gocv.VideoCapture) {
+	idxA, idxB := match[0], match[1]
+	if idxB < 0 || idxA < 0 {
+		panic("find time start frame failed")
+	}
+	fmt.Println("time align =>", idx, idxA, idxB)
+	var startA, startB = 0, 0
+	if idxA > idxB {
+		startA = idxA - idxB
+		startB = 0
+	} else {
+		startB = idxB - idxA
+		startA = 0
+	}
+	fmt.Println("time align =>", idx, startA, startB)
+
+	saveVideoFromFrame(videoA, startA, fmt.Sprintf("q_%d_", idx)+PrefixForAlignedFile+param.rawAFile)
+	saveVideoFromFrame(videoB, startB, fmt.Sprintf("q_%d_", idx)+PrefixForAlignedFile+param.rawBFile)
+
+	saveVideoFromFrame(videoA, idxA, fmt.Sprintf("s_q_%d_", idx)+PrefixForAlignedFile+param.rawAFile)
+	saveVideoFromFrame(videoB, idxB, fmt.Sprintf("s_q_%d_", idx)+PrefixForAlignedFile+param.rawBFile)
 }
 
 func alignRun(_ *cobra.Command, _ []string) {
@@ -49,26 +74,57 @@ func alignRun(_ *cobra.Command, _ []string) {
 	aHisGramFloat := distributeGradientMagnitude(aHisGram, threshold)
 	bHisGramFloat := distributeGradientMagnitude(bHisGram, threshold)
 
-	idxA, idxB := findTimeStartOfFrame(aHisGramFloat, bHisGramFloat)
-
-	if idxB < 0 || idxA < 0 {
-		panic("find time start frame failed")
+	//idxA, idxB := findTimeStartOfFrame(aHisGramFloat, bHisGramFloat)
+	aligns := findTopThreeMatches(aHisGramFloat, bHisGramFloat)
+	for i, align := range aligns {
+		fmt.Println("queue:", i)
+		saveAlign(i, align, videoA, videoB)
 	}
-	fmt.Println("time align =>", idxA, idxB)
-	var startA, startB = 0, 0
-	if idxA > idxB {
-		startA = idxA - idxB
-		startB = 0
-	} else {
-		startB = idxB - idxA
-		startA = 0
-	}
-	fmt.Println("time align =>", startA, startB)
-
-	saveVideoFromFrame(videoA, startA, PrefixForAlignedFile+param.rawAFile)
-	saveVideoFromFrame(videoB, startB, PrefixForAlignedFile+param.rawBFile)
 	//aHisGramFloat = aHisGramFloat[startA:]
 	//bHisGramFloat = bHisGramFloat[startB:]
+}
+
+type Match struct {
+	IndexA int     // 视频A中帧的索引
+	IndexB int     // 视频B中帧的索引
+	Score  float64 // 相似度分数
+}
+
+func isFrameAlreadySelected(matches [3][2]int, match Match) bool {
+	for _, m := range matches {
+		if m[0] == match.IndexA || m[1] == match.IndexB {
+			return true
+		}
+	}
+	return false
+}
+
+func findTopThreeMatches(aHisGramFloat, bHisGramFloat [][]float64) (matches [3][2]int) {
+	var allMatches []Match // Match 是一个结构体，包含两个视频中帧的索引和它们之间的相似度分数
+	for i, histA := range aHisGramFloat {
+		for j, histB := range bHisGramFloat {
+			score := calculateNCC(histA, histB) // 计算帧对 (i, j) 之间的相似度分数
+			allMatches = append(allMatches, Match{i, j, score})
+		}
+	}
+
+	// 根据相似度分数对所有匹配进行排序，这里假设有一个自定义的比较函数
+	sort.Slice(allMatches, func(i, j int) bool {
+		return allMatches[i].Score > allMatches[j].Score
+	})
+
+	// 选取前三个最匹配的帧对，同时确保每个视频中的每帧只被选取一次
+	selected := 0
+	for _, match := range allMatches {
+		if selected == MaxPairToMatch {
+			break
+		}
+		if !isFrameAlreadySelected(matches, match) {
+			matches[selected] = [2]int{match.IndexA, match.IndexB}
+			selected++
+		}
+	}
+	return matches
 }
 
 func findTimeStartOfFrame(aHisGramFloat, bHisGramFloat [][]float64) (int, int) {
@@ -81,7 +137,6 @@ func findTimeStartOfFrame(aHisGramFloat, bHisGramFloat [][]float64) (int, int) {
 	for i := range nccValues {
 		nccValues[i] = make([]float64, videoBLength)
 	}
-
 	// Iterate over all frame pairs of Video A and Video B, calculate their NCC values
 	for i, histogramA := range aHisGramFloat {
 		for j, histogramB := range bHisGramFloat {

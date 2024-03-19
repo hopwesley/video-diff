@@ -16,6 +16,7 @@ type startParam struct {
 	alignedBFile string
 	centerX      int
 	centerY      int
+	alignGap     int
 }
 
 const (
@@ -37,6 +38,7 @@ var rootCmd = &cobra.Command{
 	Run: mainRun,
 }
 var (
+	DebugFile   = true
 	param       = &startParam{}
 	faceCenters = generateIcosahedronFaces()
 )
@@ -62,7 +64,7 @@ func generateIcosahedronFaces() [][3]float64 {
 
 	// 标准化每个面的中心位置
 	for i, face := range faces {
-		faces[i] = normalize(face)
+		faces[i], _ = normalize(face)
 	}
 
 	return faces
@@ -268,7 +270,8 @@ func procHistogram(video *gocv.VideoCapture) [][][]float64 {
 	Descriptor := make([][][]float64, LevelOfDes)
 	for l := 0; l < LevelOfDes; l++ {
 		timer := 1 << l
-		histogramForFrame := procOneFrameForHistogram(gray, center, timer*BaseSizeOfPixel, float64(timer*SigmaForBaseSize))
+		var sideOfRoi = timer * BaseSizeOfPixel
+		histogramForFrame := procOneFrameForHistogram(gray, center, sideOfRoi, float64(sideOfRoi/SigmaForBaseSize))
 		Descriptor[l] = histogramForFrame
 	}
 
@@ -287,11 +290,12 @@ func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float
 	roi.Close()
 	// 遍历每个小网格并计算直方图
 	var hists [][]float64
+	cellSize := size / Cell_M
 	for i, row := range cells {
 		for j, cell := range row {
 
-			topLeftX := float64(j * cell.Cols())
-			topLeftY := float64(i * cell.Rows())
+			topLeftX := float64(j * cellSize)
+			topLeftY := float64(i * cellSize)
 
 			topLeftOfCell := Point{X: topLeftX, Y: topLeftY}
 			saveMatAsImage(cell, "cell/cell_"+topLeftOfCell.String())
@@ -337,8 +341,8 @@ func divideIntoCells(roi gocv.Mat, M int) [][]gocv.Mat {
 	for i := range cells {
 		cells[i] = make([]gocv.Mat, M)
 		for j := range cells[i] {
-			x := i * cellSize
-			y := j * cellSize
+			x := j * cellSize
+			y := i * cellSize
 			cells[i][j] = roi.Region(image.Rect(x, y, x+cellSize, y+cellSize))
 		}
 	}

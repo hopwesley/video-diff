@@ -26,10 +26,16 @@ func (p Point) GaussianKernel(center Point, sigma float64) float64 {
 	d := dx*dx + dy*dy
 	return math.Exp(-d / (2 * sigma * sigma))
 }
-func normalize(vertex [3]float64) [3]float64 {
-	length := math.Sqrt(vertex[0]*vertex[0] + vertex[1]*vertex[1] + vertex[2]*vertex[2])
-	return [3]float64{vertex[0] / length, vertex[1] / length, vertex[2] / length}
+func normalize(vertex [3]float64) ([3]float64, bool) {
+	length := vertex[0]*vertex[0] + vertex[1]*vertex[1] + vertex[2]*vertex[2]
+	if length == 0 {
+		return [3]float64{
+			0.0, 0.0, 0.0,
+		}, true
+	}
+	return [3]float64{vertex[0] / length, vertex[1] / length, vertex[2] / math.Sqrt(length)}, false
 }
+
 func saveVideoFromFrame(videoCapture *gocv.VideoCapture, startFrameIndex int, outputFile string) {
 	// 设置视频捕获的位置
 	videoCapture.Set(gocv.VideoCapturePosFrames, float64(startFrameIndex))
@@ -110,15 +116,18 @@ func quantizeGradients(gradX, gradY, gradT *gocv.Mat) []int {
 			if gradT != nil {
 				gt = gradT.GetUCharAt(row, col)
 			}
-			gradient := normalize([3]float64{float64(gx), float64(gy), float64(gt)})
+			gradient, isZero := normalize([3]float64{float64(gx), float64(gy), float64(gt)})
+			if isZero {
+				continue
+			}
 
 			// 初始化变量以找到最大的点积值
 			maxProjection := math.Inf(-1)
 			maxIndex := -1
-
+			projection := 0.0
 			// 计算每个面中心的投影
 			for i, faceCenter := range faceCenters {
-				projection := projectGradient(gradient, faceCenter)
+				projection = projectGradient(gradient, faceCenter)
 				// 更新最大点积值和索引
 				if projection > maxProjection {
 					maxProjection = projection
@@ -182,6 +191,9 @@ func norm2(hist []int) float64 {
 var tmpIdx = 0
 
 func saveMatAsImage(mat gocv.Mat, filename string) bool {
+	if !DebugFile {
+		return true
+	}
 	filename = fmt.Sprintf("tmp/%s_%d.png", filename, tmpIdx)
 	tmpIdx++
 
