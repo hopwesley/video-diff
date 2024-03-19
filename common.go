@@ -101,23 +101,16 @@ func projectGradient(gradient, faceCenter [3]float64) float64 {
 func quantizeGradients(gradX, gradY, gradT *gocv.Mat) []int {
 	histogram := make([]int, 20)
 
-	if gradT != nil {
-		var gradTFloat = gocv.NewMat()
-		gradT.ConvertTo(&gradTFloat, gocv.MatTypeCV32F) // 转换为32位浮点类型
-		gradT.Close()
-		gradT = &gradTFloat
-		defer gradT.Close()
-	}
-
 	for row := 0; row < gradX.Rows(); row++ {
 		for col := 0; col < gradX.Cols(); col++ {
 			// 获取梯度向量
-			gx, gy := gradX.GetFloatAt(row, col), gradY.GetFloatAt(row, col)
-			var gt = 0.00
+			//gx, gy := gradX.GetDoubleAt(row, col), gradY.GetDoubleAt(row, col)
+			gx, gy := gradX.GetIntAt(row, col), gradY.GetIntAt(row, col)
+			var gt = uint8(0)
 			if gradT != nil {
-				gt = float64(gradT.GetFloatAt(row, col))
+				gt = gradT.GetUCharAt(row, col)
 			}
-			gradient := normalize([3]float64{float64(gx), float64(gy), gt})
+			gradient := normalize([3]float64{float64(gx), float64(gy), float64(gt)})
 
 			// 初始化变量以找到最大的点积值
 			maxProjection := math.Inf(-1)
@@ -184,4 +177,19 @@ func norm2(hist []int) float64 {
 		sum += float64(value * value)
 	}
 	return math.Sqrt(sum)
+}
+
+var tmpIdx = 0
+
+func saveMatAsImage(mat gocv.Mat, filename string) bool {
+	filename = fmt.Sprintf("%s_%d.png", filename, tmpIdx)
+	tmpIdx++
+
+	// 将16位的图像转换为8位
+	converted := gocv.NewMat()
+	defer converted.Close()
+	mat.ConvertTo(&converted, gocv.MatTypeCV8U)
+
+	// 写入文件
+	return gocv.IMWrite(filename, converted)
 }

@@ -105,25 +105,73 @@ func mainRun(_ *cobra.Command, _ []string) {
 	var idx = 0
 	//for {
 	idx++
-	desOfA := procHistogram(fmt.Sprintf("tmp/A_%d", idx), videoA)
+	desOfA := procHistogram(videoA)
 	if desOfA == nil {
 		fmt.Println("video a finished")
 		//break
 	}
-	desOfB := procHistogram(fmt.Sprintf("tmp/B_%d", idx), videoB)
+	desOfB := procHistogram(videoB)
 	if desOfB == nil {
 		fmt.Println("video b finished")
 		//break
 	}
 
+	targetSize := (1 << LevelOfDes) * BaseSizeOfPixel
+	finalMap := make([][]float64, targetSize)
+	for i := range finalMap {
+		finalMap[i] = make([]float64, targetSize)
+	}
+
 	for l := 0; l < LevelOfDes; l++ {
 		w := wValueForOneLevel(desOfA[l], desOfB[l])
-		timer := 1 << l
-		//space := timer * BaseSizeOfPixel / (Cell_M * Cell_m)
-		wbi := bilinearInterpolate(w, timer*BaseSizeOfPixel)
+		weight := 1 << l
+		wbi := bilinearInterpolate(w, weight*BaseSizeOfPixel)
+
+		fmt.Println("w value with weight:", wbi[16][16], normalizeAndConvertToImage(wbi, fmt.Sprintf("wbi_layer_%d.png", l)))
+		//for y := 0; y < targetSize; y++ {
+		//	for x := 0; x < targetSize; x++ {
+		//		finalMap[y][x] += weight * wbi[y][x]
+		//	}
+		//}
 	}
 
 	//}
+}
+
+func normalizeAndConvertToImage(wbi [][]float64, filename string) bool {
+	height := len(wbi)
+	width := len(wbi[0])
+	img := gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
+
+	// 找到wbi中的最大值和最小值
+	maxVal := wbi[0][0]
+	minVal := wbi[0][0]
+	for _, row := range wbi {
+		for _, val := range row {
+			if val > maxVal {
+				maxVal = val
+			}
+			if val < minVal {
+				minVal = val
+			}
+		}
+	}
+
+	// 确保最大值不是0，避免除以0的情况
+	if maxVal == 0 {
+		maxVal = 1
+	}
+
+	// 归一化并将浮点数转换为uint8类型的灰度值
+	for y, row := range wbi {
+		for x, val := range row {
+			normalizedVal := (val - minVal) / (maxVal - minVal) // 将值归一化到0到1
+			grayVal := uint8(normalizedVal * 255)               // 将值映射到0到255
+			img.SetUCharAt(y, x, grayVal)
+		}
+	}
+
+	return gocv.IMWrite(filename, img)
 }
 
 func bilinearInterpolate(input [][]float64, outputSize int) [][]float64 {
@@ -180,7 +228,8 @@ func wValueForOneLevel(desAOneLevel, desBOneLevel [][]float64) [][]float64 {
 			// Here we assume that each block is represented by 10 histogram bins.
 			histA := cellA[j : j+10]
 			histB := cellB[j : j+10]
-			wForLevel[i][j/10] = euclideanDistance(histA, histB) // Store dissimilarity for each block
+			ed := euclideanDistance(histA, histB)
+			wForLevel[i][j/10] = ed // Store dissimilarity for each block
 		}
 	}
 
@@ -198,10 +247,10 @@ func euclideanDistance(vec1, vec2 []float64) float64 {
 	return math.Sqrt(sum)
 }
 
-func procHistogram(prefix string, video *gocv.VideoCapture) [][][]float64 {
+func procHistogram(video *gocv.VideoCapture) [][][]float64 {
 	width := video.Get(gocv.VideoCaptureFrameWidth)
 	height := video.Get(gocv.VideoCaptureFrameHeight)
-	var center Point
+	var center = Point{float64(param.centerX), float64(param.centerY)}
 	if param.centerX < 0 {
 		center.X = width / 2
 	}
@@ -218,14 +267,14 @@ func procHistogram(prefix string, video *gocv.VideoCapture) [][][]float64 {
 	gray := gocv.NewMat()
 	gocv.CvtColor(frame, &gray, gocv.ColorBGRToGray)
 	frame.Close()
+	fmt.Println("grayFrame Type:", gray.Type())
 	Descriptor := make([][][]float64, LevelOfDes)
 	for l := 0; l < LevelOfDes; l++ {
 		timer := 1 << l
 		histogramForFrame := procOneFrameForHistogram(gray, center, timer*BaseSizeOfPixel, float64(timer*SigmaForBaseSize))
 		Descriptor[l] = histogramForFrame
 	}
-	filename := fmt.Sprintf(prefix + "_frame.png")
-	gocv.IMWrite(filename, gray)
+
 	gray.Close()
 	return Descriptor
 }
@@ -234,6 +283,7 @@ func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float
 	fmt.Println("center of interest:", center)
 	// 获取感兴趣的区域
 	roiCenter, roi := getRegionOfInterest(gray, center, size)
+	//saveMatAsImage(roi, fmt.Sprintf("block/roi_%d_.png", tmpIdx))
 	// 划分网格
 	cells := divideIntoCells(roi, Cell_M)
 	roi.Close()
@@ -241,10 +291,11 @@ func procOneFrameForHistogram(gray gocv.Mat, center Point, size int, sigma float
 	var hists [][]float64
 	for i, row := range cells {
 		for j, cell := range row {
+			//saveMatAsImage(cell, fmt.Sprintf("block/cell_%d_.png", tmpIdx))
 			topLeftX := float64(j * cell.Cols())
 			topLeftY := float64(i * cell.Rows())
 			topLeftOfCell := Point{X: topLeftX, Y: topLeftY}
-			fmt.Printf("\nleft top of cell[row:%d, cell:%d]:%s\n", i, j, topLeftOfCell)
+			//fmt.Printf("\nleft top of cell[row:%d, cell:%d]:%s\n", i, j, topLeftOfCell)
 
 			hist := calculateHistogramForCell(cell, Cell_m, topLeftOfCell, roiCenter, sigma)
 			cell.Close() // 释放资源
@@ -311,10 +362,11 @@ func calculateHistogramForCell(cell gocv.Mat, m int, topLeftOfCell, centerOfRoi 
 				X: blockX + float64(blockSize/2),
 				Y: blockY + float64(blockSize/2),
 			}
-			fmt.Printf("\n center of block[row:%d, block:%d]: center:%s\n", i, j, centerOfBlock)
+			//fmt.Printf("\n center of block[row:%d, block:%d]: center:%s\n", i, j, centerOfBlock)
 
 			// 提取小块
 			block := cell.Region(image.Rect(j*blockSize, i*blockSize, (j+1)*blockSize, (i+1)*blockSize))
+			saveMatAsImage(block, "block/block")
 			// 计算小块的直方图
 			blockHist := quantizeBlockGradients(block)
 			// 获取高斯权重
@@ -333,7 +385,9 @@ func calculateHistogramForCell(cell gocv.Mat, m int, topLeftOfCell, centerOfRoi 
 // 量化块内的梯度
 func quantizeBlockGradients(block gocv.Mat) []int {
 	gradX := gocv.NewMat()
+	defer gradX.Close()
 	gradY := gocv.NewMat()
+	defer gradY.Close()
 	gocv.Sobel(block, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
 	gocv.Sobel(block, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
 	return quantizeGradients(&gradX, &gradY, nil)

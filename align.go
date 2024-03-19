@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	PercentForMaxDepthToTimeAlign = 0.3 //20%of all frames to find the time start
-	PrefixForAlignedFile          = "align_"
+	//PercentForMaxDepthToTimeAlign = 0.5 //20%of all frames to find the time start
+	PrefixForAlignedFile = "align_"
 )
 
 var alignCmd = &cobra.Command{
@@ -73,22 +73,8 @@ func alignRun(_ *cobra.Command, _ []string) {
 
 func findTimeStartOfFrame(aHisGramFloat, bHisGramFloat [][]float64) (int, int) {
 
-	var maxDepth = 0
-	var longGram [][]float64
-	var shortGram [][]float64
-	if len(aHisGramFloat) < len(bHisGramFloat) {
-		maxDepth = len(bHisGramFloat)
-		longGram = bHisGramFloat
-		shortGram = aHisGramFloat
-	} else {
-		maxDepth = len(aHisGramFloat)
-		longGram = aHisGramFloat
-		shortGram = bHisGramFloat
-	}
-	maxDepth = int(float32(maxDepth) * PercentForMaxDepthToTimeAlign)
-
-	videoALength := len(longGram)  // Video A frame count
-	videoBLength := len(shortGram) // Video B frame count
+	videoALength := len(aHisGramFloat) // Video A frame count
+	videoBLength := len(bHisGramFloat) // Video B frame count
 
 	// Initialize a 2D array to store the NCC values
 	nccValues := make([][]float64, videoALength)
@@ -97,11 +83,8 @@ func findTimeStartOfFrame(aHisGramFloat, bHisGramFloat [][]float64) (int, int) {
 	}
 
 	// Iterate over all frame pairs of Video A and Video B, calculate their NCC values
-	for i, histogramA := range longGram {
-		if i > maxDepth {
-			break
-		}
-		for j, histogramB := range shortGram {
+	for i, histogramA := range aHisGramFloat {
+		for j, histogramB := range bHisGramFloat {
 			nccValues[i][j] = calculateNCC(histogramA, histogramB)
 		}
 	}
@@ -148,7 +131,6 @@ func parseHistogram(video *gocv.VideoCapture) ([][]int, error) {
 			prevFrame = grayFrame.Clone()
 			continue
 		}
-		fmt.Println("[parseHistogram] read new frame from video", idx)
 
 		// Calculate spatial gradients
 		gradX := gocv.NewMat()
@@ -165,6 +147,8 @@ func parseHistogram(video *gocv.VideoCapture) ([][]int, error) {
 
 		// Quantize gradients into a histogram using an icosahedron
 		histogram := quantizeGradients(&gradX, &gradY, &gradT)
+		fmt.Println("[parseHistogram] parse histogram for frame:", idx)
+
 		histograms = append(histograms, histogram) // 将当前帧的直方图添加到数组中
 
 		gradX.Close()
