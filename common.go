@@ -198,6 +198,10 @@ func saveMatAsImage(mat gocv.Mat, filename string) bool {
 	tmpIdx++
 
 	// 将16位的图像转换为8位
+	return __saveImg(mat, filename)
+}
+
+func __saveImg(mat gocv.Mat, filename string) bool {
 	converted := gocv.NewMat()
 	defer converted.Close()
 	mat.ConvertTo(&converted, gocv.MatTypeCV8U)

@@ -84,6 +84,7 @@ func init() {
 	flags.IntVarP(&param.centerY, "center-y", "y", -1, "")
 
 	rootCmd.AddCommand(alignCmd)
+	rootCmd.AddCommand(testCmd)
 }
 
 func main() {
@@ -97,6 +98,7 @@ func mainRun(_ *cobra.Command, _ []string) {
 		fmt.Println(Version)
 		return
 	}
+	fmt.Println("file name:", param.alignedAFile, param.alignedBFile)
 	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
 	if err != nil {
 		panic(err)
@@ -218,7 +220,7 @@ func wValueForOneLevel(desAOneLevel, desBOneLevel [][]float64) [][]float64 {
 	// Initialize wForLevel with the same structure as desA and desB.
 	wForLevel := make([][]float64, len(desAOneLevel))
 	for i := range wForLevel {
-		wForLevel[i] = make([]float64, len(desAOneLevel[i]))
+		wForLevel[i] = make([]float64, len(desAOneLevel[i])/10)
 	}
 
 	// Iterate through each cell and block, computing the dissimilarity for each.
@@ -375,9 +377,14 @@ func calculateHistogramForCell(cell gocv.Mat, m int, topLeftOfCell, centerOfRoi 
 			// 获取高斯权重
 			weight := centerOfBlock.GaussianKernel(centerOfRoi, sigma)
 			// 加权直方图
+			fmt.Println()
 			for k, val := range blockHist {
-				weightedHist[i*m+j*10+k] += float64(val) * weight
+				idx := (i*m+j)*10 + k
+				weightedHist[idx] += float64(val) * weight
+				fmt.Printf("\nblock histrogram i:%d j:%d idx:%d val:%d, weight:%f result:%f", i, j, idx, val, weight, weightedHist[idx])
+
 			}
+			fmt.Println()
 			block.Close()
 		}
 	}
