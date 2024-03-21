@@ -21,7 +21,7 @@ type startParam struct {
 
 const (
 	Version          = "0.1.1"
-	BaseSizeOfPixel  = 128
+	BaseSizeOfPixel  = 32
 	Cell_M           = 2
 	Cell_m           = 4
 	SigmaForBaseSize = 6

@@ -26,14 +26,13 @@ func (p Point) GaussianKernel(center Point, sigma float64) float64 {
 	d := dx*dx + dy*dy
 	return math.Exp(-d / (2 * sigma * sigma))
 }
+
 func normalize(vertex [3]float64) ([3]float64, bool) {
-	length := vertex[0]*vertex[0] + vertex[1]*vertex[1] + vertex[2]*vertex[2]
+	length := math.Sqrt(vertex[0]*vertex[0] + vertex[1]*vertex[1] + vertex[2]*vertex[2])
 	if length == 0 {
-		return [3]float64{
-			0.0, 0.0, 0.0,
-		}, true
+		return [3]float64{0.0, 0.0, 0.0}, true
 	}
-	return [3]float64{vertex[0] / length, vertex[1] / length, vertex[2] / math.Sqrt(length)}, false
+	return [3]float64{vertex[0] / length, vertex[1] / length, vertex[2] / length}, false
 }
 
 func saveVideoFromFrame(videoCapture *gocv.VideoCapture, startFrameIndex int, outputFile string) {
@@ -106,18 +105,19 @@ func projectGradient(gradient, faceCenter [3]float64) float64 {
 // 该函数将被用于量化梯度函数中
 func quantizeGradients(gradX, gradY, gradT *gocv.Mat) []int {
 	histogram := make([]int, 20)
-
+	fmt.Println(gradX.Type(), gradY.Type(), gradT.Type())
 	for row := 0; row < gradX.Rows(); row++ {
 		for col := 0; col < gradX.Cols(); col++ {
 			// 获取梯度向量
-			//gx, gy := gradX.GetDoubleAt(row, col), gradY.GetDoubleAt(row, col)
-			gx, gy := gradX.GetIntAt(row, col), gradY.GetIntAt(row, col)
+			gx, gy := gradX.GetShortAt(row, col), gradY.GetShortAt(row, col)
 			var gt = uint8(0)
 			if gradT != nil {
 				gt = gradT.GetUCharAt(row, col)
 			}
+			//fmt.Println("gt=>", gx, gy, gt)
 			gradient, isZero := normalize([3]float64{float64(gx), float64(gy), float64(gt)})
 			if isZero {
+				fmt.Println("this is zero val=>", row, col)
 				continue
 			}
 
