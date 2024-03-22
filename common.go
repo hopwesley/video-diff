@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"gocv.io/x/gocv"
+	"io"
 	"math"
+	"os"
 )
 
 type Point struct {
@@ -117,7 +120,7 @@ func quantizeGradients(gradX, gradY, gradT *gocv.Mat) []int {
 			//fmt.Println("gt=>", gx, gy, gt)
 			gradient, isZero := normalize([3]float64{float64(gx), float64(gy), float64(gt)})
 			if isZero {
-				fmt.Println("this is zero val=>", row, col)
+				//fmt.Println("this is zero val=>", row, col)
 				continue
 			}
 
@@ -126,17 +129,21 @@ func quantizeGradients(gradX, gradY, gradT *gocv.Mat) []int {
 			maxIndex := -1
 			projection := 0.0
 			// 计算每个面中心的投影
-			for i, faceCenter := range faceCenters {
+			for i, faceCenter := range icosahedronCenterP {
 				projection = projectGradient(gradient, faceCenter)
 				// 更新最大点积值和索引
+				fmt.Println("projection=>", projection)
 				if projection > maxProjection {
 					maxProjection = projection
 					maxIndex = i
 				}
 			}
-
+			//if maxProjection < threshold {
+			//	fmt.Println("little maxProjection=>", maxProjection)
+			//}
 			// 在直方图中增加最接近的面中心位置的bin的计数
 			if maxIndex >= 0 {
+				fmt.Println(" maxProjection=>", maxProjection)
 				histogram[maxIndex]++
 			}
 		}
@@ -144,6 +151,55 @@ func quantizeGradients(gradX, gradY, gradT *gocv.Mat) []int {
 
 	// 现在需要将有方向的20-bin直方图合并为无方向的10-bin直方图
 	return convertToUndirectedHistogram(histogram)
+}
+
+func quantizeGradients2(gradX, gradY, gradT *gocv.Mat) [][][]float64 {
+	histogram := make([][][]float64, gradX.Rows())
+	//fmt.Println(gradX.Type(), gradY.Type(), gradT.Type(), gradX.Rows(), gradX.Cols())
+	for row := 0; row < gradX.Rows(); row++ {
+		histogram[row] = make([][]float64, gradX.Cols())
+		for col := 0; col < gradX.Cols(); col++ {
+			histogram[row][col] = make([]float64, 10)
+			// 获取梯度向量
+			gx, gy := gradX.GetShortAt(row, col), gradY.GetShortAt(row, col)
+			var gt = uint8(0)
+			if gradT != nil {
+				gt = gradT.GetUCharAt(row, col)
+			}
+
+			//fmt.Println("gt=>", gx, gy, gt)
+			gradient := [3]float64{float64(gx), float64(gy), float64(gt)}
+			gradientL2 := norm2Float(gradient[:])
+			if gradientL2 == 0.0 {
+				continue
+			}
+
+			gradient[0] = gradient[0] / gradientL2
+			gradient[1] = gradient[1] / gradientL2
+			gradient[2] = gradient[2] / gradientL2
+
+			// 合并对立方向的梯度值
+			for i := 0; i < 10; i++ {
+				pi, pi10 := projectGradient(gradient, icosahedronCenterP[i]), projectGradient(gradient, icosahedronCenterP[i+10])
+				onePos := math.Abs(pi)
+				twoPos := math.Abs(pi10)
+				histogram[row][col][i] = onePos + twoPos - threshold
+				if histogram[row][col][i] < 0 {
+					histogram[row][col][i] = 0.0
+				}
+				//fmt.Println("(row,col)=>[i:(i,i+10,sum(i)]=>", row, col, i, pi, pi10, onePos, twoPos, project[i])
+			}
+			pL2 := norm2Float(histogram[row][col])
+			if pL2 == 0.0 {
+				continue
+			}
+			for i := 0; i < 10; i++ {
+				histogram[row][col][i] = histogram[row][col][i] / pL2 * gradientL2
+				//fmt.Println(project[i])
+			}
+		}
+	}
+	return histogram
 }
 
 func convertToUndirectedHistogram(directedHistogram []int) []int {
@@ -180,6 +236,15 @@ func calculateMean(histogram []float64) float64 {
 }
 
 // 计算2范数
+func norm2Float(hist []float64) float64 {
+	sum := 0.0
+	for _, value := range hist {
+		sum += value * value
+	}
+	return math.Sqrt(sum)
+}
+
+// 计算2范数
 func norm2(hist []int) float64 {
 	sum := 0.0
 	for _, value := range hist {
@@ -208,4 +273,36 @@ func __saveImg(mat gocv.Mat, filename string) bool {
 
 	// 写入文件
 	return gocv.IMWrite(filename, converted)
+}
+func saveJson(fileName string, aHisGram [][]float64) {
+	file, _ := os.Create(fileName)
+	dataBytes, _ := json.Marshal(aHisGram)
+	file.Write(dataBytes)
+	file.Close()
+}
+
+func readJson(fileName string) ([][]float64, error) {
+	// 打开文件
+	file, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// 读取文件内容到字节切片
+	dataBytes, err := io.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	// 定义一个接收数据的变量
+	var data [][]float64
+
+	// 解码JSON数据到预定义的结构
+	err = json.Unmarshal(dataBytes, &data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }

@@ -12,6 +12,8 @@ const (
 	//PercentForMaxDepthToTimeAlign = 0.5 //20%of all frames to find the time start
 	PrefixForAlignedFile = "align_"
 	MaxPairToMatch       = 3
+	threshold            = 1.29107 // 根据论文描述的阈值
+
 )
 
 var alignCmd = &cobra.Command{
@@ -57,7 +59,7 @@ func saveAlign(idx int, match [2]int, videoA, videoB *gocv.VideoCapture) {
 	saveVideoFromFrame(videoB, idxB, fmt.Sprintf("s_q_%d_", idx)+PrefixForAlignedFile+param.rawBFile)
 }
 
-func alignRun(_ *cobra.Command, _ []string) {
+func alignRun2(_ *cobra.Command, _ []string) {
 	videoA, videoB, err := readFile(param.rawAFile, param.rawBFile)
 	if err != nil {
 		panic(fmt.Errorf("failed tor read video file %s", param.rawAFile))
@@ -69,7 +71,6 @@ func alignRun(_ *cobra.Command, _ []string) {
 	bHisGram, _ := parseHistogram(videoB)
 
 	// 应用阈值处理
-	threshold := 1.29107 // 根据论文描述的阈值
 
 	aHisGramFloat := distributeGradientMagnitude(aHisGram, threshold)
 	bHisGramFloat := distributeGradientMagnitude(bHisGram, threshold)
@@ -82,6 +83,23 @@ func alignRun(_ *cobra.Command, _ []string) {
 	}
 	//aHisGramFloat = aHisGramFloat[startA:]
 	//bHisGramFloat = bHisGramFloat[startB:]
+}
+
+func alignRun(_ *cobra.Command, _ []string) {
+	videoA, videoB, err := readFile(param.rawAFile, param.rawBFile)
+	if err != nil {
+		panic(fmt.Errorf("failed tor read video file %s", param.rawAFile))
+	}
+	defer videoA.Close()
+	defer videoB.Close()
+
+	aHisGram, _ := parseHistogram2(videoA)
+	bHisGram, _ := parseHistogram2(videoB)
+	ncc := nccOfAllFrame(aHisGram, bHisGram)
+
+	startA, startB := findMaxNCCSequence(ncc, testTool.window)
+	saveVideoFromFrame(videoA, startA, "align_"+param.rawAFile)
+	saveVideoFromFrame(videoB, startB, "align_"+param.rawBFile)
 }
 
 type Match struct {
@@ -127,7 +145,7 @@ func findTopThreeMatches(aHisGramFloat, bHisGramFloat [][]float64) (matches [3][
 	return matches
 }
 
-func findTimeStartOfFrame(aHisGramFloat, bHisGramFloat [][]float64) (int, int) {
+func nccOfAllFrame(aHisGramFloat, bHisGramFloat [][]float64) [][]float64 {
 
 	videoALength := len(aHisGramFloat) // Video A frame count
 	videoBLength := len(bHisGramFloat) // Video B frame count
@@ -143,21 +161,110 @@ func findTimeStartOfFrame(aHisGramFloat, bHisGramFloat [][]float64) (int, int) {
 			nccValues[i][j] = calculateNCC(histogramA, histogramB)
 		}
 	}
+	return nccValues // These are the indices of the frames that best align in time
+}
 
-	maxNCC := -1.0       // Assuming NCC values range from -1 to 1, start with the minimum possible value
-	maxI, maxJ := -1, -1 // To store the indices of the maximum NCC value
+func findMaxNCCSequence(nccValues [][]float64, sequenceLength int) (int, int) {
+	maxSum := -1.0       // 假设NCC值范围是-1到1，开始时设置为最小可能的和
+	maxI, maxJ := -1, -1 // 用于存储最大和对应的起始帧索引
 
-	// Find the maximum NCC value and its corresponding indices
-	for i, row := range nccValues {
-		for j, nccValue := range row {
-			if nccValue > maxNCC {
-				maxNCC = nccValue // Update the maximum NCC value
-				maxI, maxJ = i, j // Update the indices of the maximum NCC value
+	for i := 0; i <= len(nccValues)-sequenceLength; i++ {
+		for j := 0; j <= len(nccValues[0])-sequenceLength; j++ {
+			sum := 0.0
+			for k := 0; k < sequenceLength; k++ {
+				sum += nccValues[i+k][j+k] // 计算连续sequenceLength帧的NCC值之和
+			}
+
+			if sum > maxSum {
+				maxSum = sum
+				maxI, maxJ = i, j
+			}
+		}
+	}
+	fmt.Println(nccValues[maxI][maxJ])
+	return maxI, maxJ // 返回连续sequenceLength帧NCC值之和最大的起始帧索引
+}
+
+func computeFrameVector(quantizedGradients [][][]float64) []float64 {
+	frameVector := make([]float64, 10) // 一个帧的10维向量 q_t^A
+
+	// 遍历每个像素的量化梯度向量
+	for _, row := range quantizedGradients {
+		for _, pixelVector := range row {
+			for i, value := range pixelVector {
+				//fmt.Println(x, y, value, frameVector[i])
+				frameVector[i] += value // 对每一维度进行累加
 			}
 		}
 	}
 
-	return maxI, maxJ // These are the indices of the frames that best align in time
+	// 归一化 frameVector
+	//norm := norm2Float(frameVector)
+	//if norm > 0 {
+	//	for i := range frameVector {
+	//		frameVector[i] /= norm // 对每一维度的值进行归一化
+	//	}
+	//}
+
+	return frameVector
+}
+
+func parseHistogram2(video *gocv.VideoCapture) ([][]float64, error) {
+	// 初始化前一帧变量
+	var prevFrame gocv.Mat
+	firstFrame := true
+	var idx = 0
+	histograms := make([][]float64, 0)
+	for {
+		var frame = gocv.NewMat()
+		if ok := video.Read(&frame); !ok || frame.Empty() {
+			fmt.Println("[parseHistogram] read frame from video finished", idx)
+			frame.Close()
+			break
+		}
+		idx++
+		// Convert to grayscale
+		var grayFrame = gocv.NewMat()
+		gocv.CvtColor(frame, &grayFrame, gocv.ColorBGRToGray)
+		frame.Close()
+		if firstFrame {
+			fmt.Println("[parseHistogram] read first frame from video", idx)
+			firstFrame = false
+			prevFrame = grayFrame.Clone()
+			continue
+		}
+
+		// Calculate spatial gradients
+		gradX := gocv.NewMat()
+		gradY := gocv.NewMat()
+		gradT := gocv.NewMat()
+
+		gocv.Sobel(grayFrame, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+		gocv.Sobel(grayFrame, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+		gocv.AbsDiff(grayFrame, prevFrame, &gradT)
+
+		prevFrame.Close()
+		// Make the current frame the new previous frame for the next iteration
+		prevFrame = grayFrame.Clone()
+
+		// Quantize gradients into a histogram using an icosahedron
+		histogram := quantizeGradients2(&gradX, &gradY, &gradT)
+		sumHistogram := computeFrameVector(histogram)
+		fmt.Println("[parseHistogram] parse histogram for frame:", idx, sumHistogram)
+
+		histograms = append(histograms, sumHistogram) // 将当前帧的直方图添加到数组中
+
+		gradX.Close()
+		gradY.Close()
+		gradT.Close()
+		grayFrame.Close()
+	}
+
+	// Release the last previous frame
+	if !prevFrame.Empty() {
+		prevFrame.Close()
+	}
+	return histograms, nil
 }
 
 func parseHistogram(video *gocv.VideoCapture) ([][]int, error) {

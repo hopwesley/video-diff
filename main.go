@@ -38,9 +38,9 @@ var rootCmd = &cobra.Command{
 	Run: mainRun,
 }
 var (
-	DebugFile   = true
-	param       = &startParam{}
-	faceCenters = generateIcosahedronFaces()
+	DebugFile          = true
+	param              = &startParam{}
+	icosahedronCenterP = generateIcosahedronFaces()
 )
 
 // 定义黄金分割比
