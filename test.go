@@ -49,11 +49,11 @@ func init() {
 		"b", "B.mp4", "golf -b B.mp4")
 
 	flags.IntVarP(&testTool.cx, "centerX",
-		"c", 64, "golf test -c 64")
+		"c", 32, "golf test -c 64")
 	flags.IntVarP(&testTool.cy, "centerY",
-		"d", 64, "golf test -d 64")
+		"d", 32, "golf test -d 64")
 	flags.IntVarP(&testTool.cs, "size",
-		"s", 32, "golf test -s 32")
+		"s", 16, "golf test -s 32")
 }
 
 func testRun(_ *cobra.Command, _ []string) {
@@ -175,7 +175,7 @@ func testData() (frameA, frameA2, frameB, frameB2 gocv.Mat) {
 			frameB2.SetUCharAt(y, x, uint8((3*x)%256))
 		}
 	}
-	frameA2.SetUCharAt(81, 81, 0)
+	frameA2.SetUCharAt(12, 12, 0)
 
 	//for i := 0; i < 32; i++ {
 	//	for j := 0; j < 32; j++ {
@@ -289,7 +289,7 @@ func roiGradient(grayFrame gocv.Mat, roiCenter Point, roiSide int) []float64 {
 		Y: roiCenter.Y - float64(roiSide)/2,
 	}
 	//fmt.Println("roi left-top", leftTop.String(), "roi center:", roiCenter.String())
-	sigma := roiSide / 4
+	sigma := 1 //cellSide / SigmaForBaseSize
 	var cellLeftTop Point
 	for row := 0; row < Cell_M; row++ {
 		cellLeftTop.Y = leftTop.Y + float64(row*cellSide)
@@ -428,21 +428,36 @@ func bilinearInterpolate2(x, y float64, w [][]float64, width, height int) float6
 
 func ComputeWtl() {
 	frameA, frameA2, _, _ := testData()
+	__saveImg(frameA, "wtl_a.png")
+	__saveImg(frameA2, "wtl_b.png")
 	defer frameA.Close()
 	defer frameA2.Close()
-
+	height := frameA.Rows()
+	width := frameA.Cols()
 	center := Point{
 		X: float64(testTool.cx),
 		Y: float64(testTool.cy),
 	}
-	desA := roiGradient(frameA, center, testTool.cs)
-	fmt.Println("\nframe A normal=>\n", desA)
+	for y := testTool.cs / 2; y <= height-testTool.cs/2; y += StepSize {
+		for x := testTool.cs / 2; x <= width-testTool.cs/2; x += StepSize {
+			desA := roiGradient(frameA, center, testTool.cs)
+			fmt.Println("\nframe A normal=>\n", desA)
 
-	desA2 := roiGradient(frameA2, center, testTool.cs)
-	fmt.Println("\nframe A2 normal=>\n", desA2)
+			desA2 := roiGradient(frameA2, center, testTool.cs)
+			fmt.Println("\nframe A2 normal=>\n", desA2)
 
-	wtl := calculateL2Distance(desA, desA2)
-	fmt.Println("\n w at l=1", wtl)
+			wtl := calculateL2Distance(desA, desA2)
+			fmt.Println("\n wtl at:", x, y, wtl)
+		}
+	}
+	//desA := roiGradient(frameA, center, testTool.cs)
+	//fmt.Println("\nframe A normal=>\n", desA)
+	//
+	//desA2 := roiGradient(frameA2, center, testTool.cs)
+	//fmt.Println("\nframe A2 normal=>\n", desA2)
+	//
+	//wtl := calculateL2Distance(desA, desA2)
+	//fmt.Println("\n w at l=1", wtl)
 }
 
 func wtl(frameA, frameA2 gocv.Mat, roiSize int) [][]float64 {
@@ -480,6 +495,7 @@ func wtl(frameA, frameA2 gocv.Mat, roiSize int) [][]float64 {
 
 	return wMatrix
 }
+
 func ComputeW() {
 	//frameA, frameA2, _, _ := testData()
 	frameA, frameA2 := getVideoFirstFrame("align_A.mp4", "align_B.mp4")
@@ -509,13 +525,17 @@ func ComputeW() {
 		for y := 0; y < height; y++ {
 			for x := 0; x < width; x++ {
 				w, h := len(wMatrix[0]), len(wMatrix)
-				interpolatedW[y][x] = bilinearInterpolate2(float64(x)/float64(StepSize), float64(y)/float64(StepSize), wMatrix, w, h)
-				result[y][x] += float64(times) * interpolatedW[y][x]
+				wtlxy := bilinearInterpolate2(float64(x)/float64(StepSize), float64(y)/float64(StepSize), wMatrix, w, h)
+				interpolatedW[y][x] = wtlxy
+				result[y][x] = result[y][x] + wtlxy*float64(times)
+				//if interpolatedW[y][x] != result[y][x] {
+				//	fmt.Println(result[y][x], interpolatedW[y][x])
+				//}
 			}
 		}
 
 		normalizeAndConvertToImage(interpolatedW, fmt.Sprintf("wt_at_level_%d.png", times))
 	}
 
-	normalizeAndConvertToImage(result, "wt_result.png")
+	normalizeAndConvertToImage(result, "wt_at_level_0.png")
 }
