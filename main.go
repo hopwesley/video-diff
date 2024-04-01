@@ -24,6 +24,7 @@ const (
 	BaseSizeOfPixel  = 32
 	Cell_M           = 2
 	Cell_m           = 4
+	StepSize         = BaseSizeOfPixel >> 1
 	SigmaForBaseSize = 6
 	LevelOfDes       = 1
 )
@@ -138,42 +139,6 @@ func mainRun(_ *cobra.Command, _ []string) {
 	}
 
 	//}
-}
-
-func normalizeAndConvertToImage(wbi [][]float64, filename string) bool {
-	height := len(wbi)
-	width := len(wbi[0])
-	img := gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
-
-	// 找到wbi中的最大值和最小值
-	maxVal := wbi[0][0]
-	minVal := wbi[0][0]
-	for _, row := range wbi {
-		for _, val := range row {
-			if val > maxVal {
-				maxVal = val
-			}
-			if val < minVal {
-				minVal = val
-			}
-		}
-	}
-
-	// 确保最大值不是0，避免除以0的情况
-	if maxVal == 0 {
-		maxVal = 1
-	}
-
-	// 归一化并将浮点数转换为uint8类型的灰度值
-	for y, row := range wbi {
-		for x, val := range row {
-			normalizedVal := (val - minVal) / (maxVal - minVal) // 将值归一化到0到1
-			grayVal := uint8(normalizedVal * 255)               // 将值映射到0到255
-			img.SetUCharAt(y, x, grayVal)
-		}
-	}
-
-	return gocv.IMWrite(filename, img)
 }
 
 func bilinearInterpolate(input [][]float64, outputSize int) [][]float64 {

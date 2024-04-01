@@ -181,7 +181,6 @@ func findMaxNCCSequence(nccValues [][]float64, sequenceLength int) (int, int) {
 			}
 		}
 	}
-	fmt.Println(nccValues[maxI][maxJ])
 	return maxI, maxJ // 返回连续sequenceLength帧NCC值之和最大的起始帧索引
 }
 
