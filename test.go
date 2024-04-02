@@ -63,11 +63,11 @@ func init() {
 	flags.IntVarP(&testTool.cs, "size",
 		"s", 32, "golf test -s 32")
 
-	flags.StringVarP(&param.alignedAFile, "source",
-		"a", "align_A.mp4", "golf -a align_A.mp4")
+	flags.StringVarP(&param.alignedAFile, "align-source",
+		"k", "align_A.mp4", "golf -k align_A.mp4")
 
-	flags.StringVarP(&param.alignedBFile, "dest",
-		"b", "align_B.mp4", "golf -b align_B.mp4")
+	flags.StringVarP(&param.alignedBFile, "align-dest",
+		"l", "align_B.mp4", "golf -l align_B.mp4")
 
 	flags.Float64VarP(&testTool.alpha, "alpha", "f", 0.75, "golf test -f 0.75")
 	flags.Float64VarP(&testTool.betaLow, "betaL", "i", 0.2, "golf test -i 0.2")
