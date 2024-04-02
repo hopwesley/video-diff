@@ -63,6 +63,12 @@ func init() {
 	flags.IntVarP(&testTool.cs, "size",
 		"s", 32, "golf test -s 32")
 
+	flags.StringVarP(&param.alignedAFile, "source",
+		"a", "align_A.mp4", "golf -a align_A.mp4")
+
+	flags.StringVarP(&param.alignedBFile, "dest",
+		"b", "align_B.mp4", "golf -b align_B.mp4")
+
 	flags.Float64VarP(&testTool.alpha, "alpha", "f", 0.75, "golf test -f 0.75")
 	flags.Float64VarP(&testTool.betaLow, "betaL", "i", 0.2, "golf test -i 0.2")
 	flags.Float64VarP(&testTool.betaHigh, "betaH", "j", 0.8, "golf test -j 0.8")
@@ -102,6 +108,9 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 11:
 		ComputeOverlay()
+		return
+	case 12:
+		ComputeVideoDiff()
 		return
 	}
 }
@@ -739,12 +748,51 @@ func ComputeOverlay() {
 
 	gradientMagnitude := computeG(frameB)
 
+	img := overlay(frameA, wtVal, gradientMagnitude)
+
+	file, _ := os.Create("overlay_result.png")
+	defer file.Close()
+	png.Encode(file, img)
+}
+
+func wt(frameA, frameB gocv.Mat) [][]float64 {
+	height := frameA.Rows()
+	width := frameA.Cols()
+
+	result := make([][]float64, height)
+	for i := range result {
+		result[i] = make([]float64, width)
+	}
+
+	for l := 0; l < 3; l++ {
+		interpolatedW := make([][]float64, height)
+		for i := range interpolatedW {
+			interpolatedW[i] = make([]float64, width)
+		}
+		times := 1 << l
+		roiSize := BaseSizeOfPixel * times
+
+		wMatrix := wtl(frameA, frameB, roiSize)
+
+		// 应用双线性插值
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				w, h := len(wMatrix[0]), len(wMatrix)
+				wtlxy := bilinearInterpolate2(float64(x)/float64(StepSize), float64(y)/float64(StepSize), wMatrix, w, h)
+				interpolatedW[y][x] = wtlxy
+				result[y][x] = result[y][x] + wtlxy*float64(times)
+			}
+		}
+	}
+	return normalizeImage(result)
+}
+
+func overlay(frameA gocv.Mat, wtVal, gradientMagnitude [][]float64) image.Image {
 	width := frameA.Cols()
 	height := frameA.Rows()
 	adjustedFrame := adjustContrast(frameA, testTool.betaLow, testTool.betaHigh)
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
 			score := wtVal[y][x]
@@ -760,8 +808,66 @@ func ComputeOverlay() {
 			img.Set(x, y, vColor)
 		}
 	}
+	return img
+}
 
-	file, _ := os.Create("overlay_result.png")
-	defer file.Close()
-	png.Encode(file, img)
+func ComputeVideoDiff() {
+	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
+	if err != nil {
+		panic("failed tor read video file")
+	}
+	defer videoA.Close()
+	defer videoB.Close()
+
+	width := videoA.Get(gocv.VideoCaptureFrameWidth)
+	height := videoA.Get(gocv.VideoCaptureFrameHeight)
+	fps := videoA.Get(gocv.VideoCaptureFPS)
+
+	videoWriter, _ := gocv.VideoWriterFile(
+		"overlay_result.mp4", // 输出视频文件
+		"mp4v",               // 编码格式
+		fps,                  // FPS
+		int(width),           // 视频宽度
+		int(height),          // 视频高度
+		true)                 // 是否彩色
+	defer videoWriter.Close()
+
+	var idx = 0
+	for {
+		var frameA = gocv.NewMat()
+		if ok := videoA.Read(&frameA); !ok || frameA.Empty() {
+			frameA.Close()
+			break
+		}
+
+		var frameB = gocv.NewMat()
+		if ok := videoB.Read(&frameB); !ok || frameB.Empty() {
+			videoB.Close()
+			break
+		}
+		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
+		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorBGRToGray)
+		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorBGRToGray)
+		frameA.Close()
+		frameB.Close()
+
+		wtVal := wt(grayFrameA, grayFrameB)
+		gradientMagnitude := computeG(grayFrameB)
+		img := overlay(grayFrameA, wtVal, gradientMagnitude)
+
+		file, _ := os.Create(fmt.Sprintf("tmp/overlay/overlay_result_%d.png", idx))
+		_ = png.Encode(file, img)
+		_ = file.Close()
+
+		mat, err := gocv.ImageToMatRGB(img)
+		if err != nil {
+			panic(err)
+		}
+
+		_ = videoWriter.Write(mat)
+		grayFrameA.Close()
+		grayFrameB.Close()
+		idx++
+		fmt.Println("finish frame:", idx)
+	}
 }

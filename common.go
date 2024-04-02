@@ -372,7 +372,7 @@ func normalizeImage(wbi [][]float64) [][]float64 {
 			}
 		}
 	}
-	fmt.Println("maxVal------>>>:", maxVal)
+	//fmt.Println("maxVal------>>>:", maxVal)
 	if maxVal == 0 {
 		maxVal = 1
 	}
