@@ -274,6 +274,20 @@ func __saveImg(mat gocv.Mat, filename string) bool {
 	// 写入文件
 	return gocv.IMWrite(filename, converted)
 }
+
+func __saveNormalizedData(data [][]float64, fileName string) bool {
+	height := len(data)
+	width := len(data[0])
+	img := gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
+	for y, row := range data {
+		for x, val := range row {
+			grayVal := uint8(val * 255) // 将值映射到0到255
+			img.SetUCharAt(y, x, grayVal)
+		}
+	}
+	return gocv.IMWrite(fileName, img)
+}
+
 func saveJson(fileName string, aHisGram [][]float64) {
 	file, _ := os.Create(fileName)
 	dataBytes, _ := json.Marshal(aHisGram)
@@ -341,4 +355,35 @@ func normalizeAndConvertToImage(wbi [][]float64, filename string) bool {
 	}
 
 	return gocv.IMWrite(filename, img)
+}
+
+func normalizeImage(wbi [][]float64) [][]float64 {
+
+	// 找到wbi中的最大值和最小值
+	maxVal := wbi[0][0]
+	minVal := wbi[0][0]
+	for _, row := range wbi {
+		for _, val := range row {
+			if val > maxVal {
+				maxVal = val
+			}
+			if val < minVal {
+				minVal = val
+			}
+		}
+	}
+
+	if maxVal == 0 {
+		maxVal = 1
+	}
+	normalizedWbi := make([][]float64, len(wbi))
+	for y, row := range wbi {
+		normalizedWbi[y] = make([]float64, len(wbi[0]))
+		for x, val := range row {
+			normalizedVal := (val - minVal) / (maxVal - minVal) // 将值归一化到0到1
+			normalizedWbi[y][x] = normalizedVal
+		}
+	}
+
+	return normalizedWbi
 }
