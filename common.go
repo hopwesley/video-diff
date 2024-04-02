@@ -372,7 +372,7 @@ func normalizeImage(wbi [][]float64) [][]float64 {
 			}
 		}
 	}
-
+	fmt.Println("maxVal------>>>:", maxVal)
 	if maxVal == 0 {
 		maxVal = 1
 	}
@@ -380,6 +380,7 @@ func normalizeImage(wbi [][]float64) [][]float64 {
 	for y, row := range wbi {
 		normalizedWbi[y] = make([]float64, len(wbi[0]))
 		for x, val := range row {
+
 			normalizedVal := (val - minVal) / (maxVal - minVal) // 将值归一化到0到1
 			normalizedWbi[y][x] = normalizedVal
 		}

@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"github.com/spf13/cobra"
 	"gocv.io/x/gocv"
+	"image"
 	"image/color"
+	"image/png"
 	"math"
+	"os"
 	"sort"
 )
 
@@ -58,7 +61,8 @@ func init() {
 	flags.IntVarP(&testTool.cy, "centerY",
 		"d", 32, "golf test -d 64")
 	flags.IntVarP(&testTool.cs, "size",
-		"s", 16, "golf test -s 32")
+		"s", 32, "golf test -s 32")
+
 	flags.Float64VarP(&testTool.alpha, "alpha", "f", 0.75, "golf test -f 0.75")
 	flags.Float64VarP(&testTool.betaLow, "betaL", "i", 0.2, "golf test -i 0.2")
 	flags.Float64VarP(&testTool.betaHigh, "betaH", "j", 0.8, "golf test -j 0.8")
@@ -94,6 +98,9 @@ func testRun(_ *cobra.Command, _ []string) {
 		AdjustContrast()
 		return
 	case 10:
+		ComputeFC()
+		return
+	case 11:
 		ComputeOverlay()
 		return
 	}
@@ -177,7 +184,7 @@ func createTestImg() {
 func testData() (frameA, frameA2, frameB, frameB2 gocv.Mat) {
 
 	//width, height := testTool.width, testTool.height
-	width, height := 128, 128
+	width, height := 256, 256
 
 	frameA = gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
 	frameB = gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
@@ -192,13 +199,13 @@ func testData() (frameA, frameA2, frameB, frameB2 gocv.Mat) {
 			frameB2.SetUCharAt(y, x, uint8((3*x)%256))
 		}
 	}
-	frameA2.SetUCharAt(12, 12, 0)
+	//frameA2.SetUCharAt(12, 12, 0)
 
-	//for i := 0; i < 32; i++ {
-	//	for j := 0; j < 32; j++ {
-	//		frameA2.SetUCharAt(width/2-16+i, width/2-16+j, 0)
-	//	}
-	//}
+	for i := 0; i < 32; i++ {
+		for j := 0; j < 32; j++ {
+			frameA2.SetUCharAt(width/2-16+i, width/2-16+j, 0)
+		}
+	}
 
 	return
 }
@@ -444,37 +451,40 @@ func bilinearInterpolate2(x, y float64, w [][]float64, width, height int) float6
 }
 
 func ComputeWtl() {
-	frameA, frameA2, _, _ := testData()
+	//frameA, frameA2, _, _ := testData()
+	frameA, frameA2 := getVideoFirstFrame("align_A.mp4", "align_B.mp4")
 	__saveImg(frameA, "wtl_a.png")
 	__saveImg(frameA2, "wtl_b.png")
+
 	defer frameA.Close()
 	defer frameA2.Close()
 	height := frameA.Rows()
 	width := frameA.Cols()
-	center := Point{
-		X: float64(testTool.cx),
-		Y: float64(testTool.cy),
-	}
+	result := make([][]float64, 0)
 	for y := testTool.cs / 2; y <= height-testTool.cs/2; y += StepSize {
+		item := make([]float64, 0)
 		for x := testTool.cs / 2; x <= width-testTool.cs/2; x += StepSize {
+
+			center := Point{
+				X: float64(x),
+				Y: float64(y),
+			}
+
 			desA := roiGradient(frameA, center, testTool.cs)
-			fmt.Println("\nframe A normal=>\n", desA)
+			//fmt.Println("frame A normal=>\n", desA)
 
 			desA2 := roiGradient(frameA2, center, testTool.cs)
-			fmt.Println("\nframe A2 normal=>\n", desA2)
+			//fmt.Println("frame A2 normal=>\n", desA2)
 
 			wtl := calculateL2Distance(desA, desA2)
-			fmt.Println("\n wtl at:", x, y, wtl)
+			//fmt.Println("wtl at:", x, y, wtl)
+			item = append(item, wtl)
 		}
+		result = append(result, item)
 	}
-	//desA := roiGradient(frameA, center, testTool.cs)
-	//fmt.Println("\nframe A normal=>\n", desA)
-	//
-	//desA2 := roiGradient(frameA2, center, testTool.cs)
-	//fmt.Println("\nframe A2 normal=>\n", desA2)
-	//
-	//wtl := calculateL2Distance(desA, desA2)
-	//fmt.Println("\n w at l=1", wtl)
+	fmt.Println("wtl height:", len(result), "wtl width", len(result[0]))
+	a := normalizeImage(result)
+	__saveNormalizedData(a, "wtl_wt.png")
 }
 
 func wtl(frameA, frameA2 gocv.Mat, roiSize int) [][]float64 {
@@ -609,7 +619,10 @@ func ComputeG() {
 	defer frameA.Close()
 	defer frameB.Close()
 	gradB := computeG(frameB)
+
 	__saveNormalizedData(gradB, "wt_grad_b.png")
+	//a := normalizeImage(gradB)
+	//__saveNormalizedData(a, "wt_grad_b_2.png")
 }
 
 func convertMatToIntSlice(mat gocv.Mat) []int {
@@ -668,62 +681,87 @@ func linearInterpolation(colorA, colorB color.RGBA, factor float64) color.RGBA {
 		R: uint8(float64(colorA.R)*(1-factor) + float64(colorB.R)*factor),
 		G: uint8(float64(colorA.G)*(1-factor) + float64(colorB.G)*factor),
 		B: uint8(float64(colorA.B)*(1-factor) + float64(colorB.B)*factor),
-		A: 255,
+		A: 255, // Alpha值保持不变，总是不透明
 	}
 }
 
 func fc(score float64) color.RGBA {
-	// Ensure the score is within the expected range.
-	clampedScore := math.Max(0, math.Min(score, 1))
+	// 确保分数在0和1之间
+	//clampedScore := math.Max(0, math.Min(score, 1))
+	if score > 1 || score < 0 {
+		panic("score")
+	}
 
-	// Define colors for low and high dissimilarity.
-	lowColor := color.RGBA{R: 255, G: 255, B: 0, A: 255} // Yellow for low dissimilarity.
-	highColor := color.RGBA{R: 255, G: 0, B: 0, A: 255}  // Red for high dissimilarity.
+	// 定义颜色值
+	lowColor := color.RGBA{R: 255, G: 253, B: 175, A: 255}
+	highColor := color.RGBA{R: 255, G: 0, B: 0, A: 255}
 
-	// Perform the linear interpolation based on the clamped score.
-	interpolatedColor := linearInterpolation(lowColor, highColor, clampedScore)
+	// 根据分数进行颜色插值
+	interpolatedColor := linearInterpolation(lowColor, highColor, score)
 
 	return interpolatedColor
+}
+
+func ComputeFC() {
+	frameA, frameB := getVideoFirstFrame("align_A.mp4", "align_B.mp4")
+	defer frameA.Close()
+	defer frameB.Close()
+
+	width := frameA.Cols()
+	height := frameA.Rows()
+
+	wtVal, _ := readJson("wt_at_level_0.txt")
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	//aColor := color.RGBA{R: grayValue, G: grayValue, B: grayValue, A: 255}
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			aColor := fc(wtVal[y][x])
+			//if wtVal[y][x] > 0.95 {
+			//	fmt.Println("score======>>>>", wtVal[y][x], y, x)
+			//}
+			img.Set(x, y, aColor)
+		}
+	}
+	file, _ := os.Create("overlay_fc.png")
+	defer file.Close()
+	png.Encode(file, img)
 }
 
 // Note: You will need to implement the calculatePercentile function that
 // calculates the given percentile of a slice of float64 values.
 
 func ComputeOverlay() {
-	////wtVal, _ := readJson("wt_at_level_0.txt")
-	//frameA, frameB := getVideoFirstFrame("align_A.mp4", "align_B.mp4")
-	//defer frameA.Close()
-	//defer frameB.Close()
-	//
-	////gradientMagnitude := computeG(frameB)
-	//
-	//width := frameA.Cols()
-	//height := frameA.Rows()
-	//adjustedFrame := adjustContrast(frameA, 0.2, 0.8)
-	//
-	//img := image.NewRGBA(image.Rect(0, 0, width, height))
-	////maxScore := findMaxScore(wtVal)
-	//
-	//for y := 0; y < height; y++ {
-	//	for x := 0; x < width; x++ {
-	//		//normalizedScore := wtVal[y][x] / maxScore // 归一化分数到0-1范围。
-	//		//heatMapColor := fc(normalizedScore)
-	//		//g := float64(gradientMagnitude.GetFloatAt(y, x))
-	//		grayValue := adjustedFrame.GetUCharAt(y, x)
-	//		aColor := color.RGBA{R: grayValue, G: grayValue, B: grayValue, A: 255}
-	//
-	//		//vColor := color.RGBA{
-	//		//	R: uint8((1-g)*float64(aColor.R) + g*float64(heatMapColor.R)),
-	//		//	G: uint8((1-g)*float64(aColor.G) + g*float64(heatMapColor.G)),
-	//		//	B: uint8((1-g)*float64(aColor.B) + g*float64(heatMapColor.B)),
-	//		//	A: 255,
-	//		//}
-	//
-	//		img.Set(x, y, aColor)
-	//	}
-	//}
-	//
-	//file, _ := os.Create("overlay_result.png")
-	//defer file.Close()
-	//png.Encode(file, img)
+	wtVal, _ := readJson("wt_at_level_0.txt")
+	frameA, frameB := getVideoFirstFrame("align_A.mp4", "align_B.mp4")
+	defer frameA.Close()
+	defer frameB.Close()
+
+	gradientMagnitude := computeG(frameB)
+
+	width := frameA.Cols()
+	height := frameA.Rows()
+	adjustedFrame := adjustContrast(frameA, testTool.betaLow, testTool.betaHigh)
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			score := wtVal[y][x]
+			heatMapColor := fc(score)
+			g := gradientMagnitude[y][x]
+			grayValue := adjustedFrame[y][x]
+			vColor := color.RGBA{
+				R: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.R)),
+				G: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.G)),
+				B: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.B)),
+				A: 255,
+			}
+			img.Set(x, y, vColor)
+		}
+	}
+
+	file, _ := os.Create("overlay_result.png")
+	defer file.Close()
+	png.Encode(file, img)
 }
