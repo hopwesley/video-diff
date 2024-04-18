@@ -112,6 +112,9 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 12:
 		ComputeVideoDiff()
 		return
+	case 13:
+		ComputeDiffImg()
+		return
 	}
 }
 
@@ -870,4 +873,18 @@ func ComputeVideoDiff() {
 		idx++
 		fmt.Println("finish frame:", idx)
 	}
+}
+
+func ComputeDiffImg() {
+	imgA := gocv.IMRead("wtl_c.jpeg", gocv.IMReadGrayScale)
+	imgB := gocv.IMRead("wtl_d.jpeg", gocv.IMReadGrayScale)
+	//__saveImg(img, "wtl_e.jpeg")
+
+	wtVal := wt(imgA, imgB)
+	gradientMagnitude := computeG(imgB)
+	img := overlay(imgA, wtVal, gradientMagnitude)
+
+	file, _ := os.Create("wtl_c_d_overlay.png")
+	_ = png.Encode(file, img)
+	_ = file.Close()
 }
