@@ -115,6 +115,14 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 13:
 		ComputeDiffImg()
 		return
+
+	case 14:
+		ComputeG2()
+		return
+
+	case 15:
+		AITest()
+		return
 	}
 }
 
@@ -637,6 +645,23 @@ func ComputeG() {
 	//__saveNormalizedData(a, "wt_grad_b_2.png")
 }
 
+func ComputeG2() {
+	img := gocv.IMRead("ai_source.jpg", gocv.IMReadColor)
+	if img.Empty() {
+		fmt.Println("无法读取图片")
+		return
+	}
+
+	grayFrameA := gocv.NewMat()
+	gocv.CvtColor(img, &grayFrameA, gocv.ColorBGRToGray)
+	defer img.Close()
+	gradB := computeG(grayFrameA)
+
+	__saveNormalizedData(gradB, "ai_dest.png")
+	//a := normalizeImage(gradB)
+	//__saveNormalizedData(a, "wt_grad_b_2.png")
+}
+
 func convertMatToIntSlice(mat gocv.Mat) []int {
 	height, width := mat.Rows(), mat.Cols()
 	slice := make([]int, height*width)
@@ -887,4 +912,54 @@ func ComputeDiffImg() {
 	file, _ := os.Create("wtl_c_d_overlay.png")
 	_ = png.Encode(file, img)
 	_ = file.Close()
+}
+
+func AITest() {
+	// 加载原始图片
+	src := gocv.IMRead("ai_source.jpg", gocv.IMReadColor)
+	defer src.Close()
+
+	// 转换为灰度图像
+	gray := gocv.NewMat()
+	defer gray.Close()
+	gocv.CvtColor(src, &gray, gocv.ColorBGRToGray)
+
+	// 应用高斯模糊减少噪点
+	gocv.GaussianBlur(gray, &gray, image.Point{X: 9, Y: 9}, 0, 0, gocv.BorderDefault)
+
+	// 应用 Canny 边缘检测，调整阈值
+	edges := gocv.NewMat()
+	defer edges.Close()
+	gocv.Canny(gray, &edges, 100, 200)
+
+	// 使用形态学操作去除小噪点
+	kernel := gocv.GetStructuringElement(gocv.MorphRect, image.Point{X: 5, Y: 5})
+	gocv.Dilate(edges, &edges, kernel)
+
+	// 查找轮廓
+	contours := gocv.FindContours(edges, gocv.RetrievalExternal, gocv.ChainApproxSimple)
+
+	// 创建一个空白的黑色图像
+	result := gocv.NewMatWithSize(src.Rows(), src.Cols(), gocv.MatTypeCV8U)
+	defer result.Close()
+	result.SetTo(gocv.NewScalar(0, 0, 0, 0))
+
+	// 绘制白色轮廓，过滤小轮廓
+	white := color.RGBA{255, 255, 255, 255}
+	for i := 0; i < contours.Size(); i++ {
+		if gocv.ContourArea(contours.At(i)) > 100 { // 只绘制较大的轮廓
+			gocv.DrawContours(&result, contours, i, white, -1) // -1 填充轮廓
+		}
+	}
+
+	// 保存或显示结果
+	window := gocv.NewWindow("Contours")
+	defer window.Close()
+
+	for {
+		window.IMShow(result)
+		if window.WaitKey(1) >= 0 {
+			break
+		}
+	}
 }
