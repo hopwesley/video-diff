@@ -224,7 +224,7 @@ func parseHistogram2(video *gocv.VideoCapture) ([][]float64, error) {
 		idx++
 		// Convert to grayscale
 		var grayFrame = gocv.NewMat()
-		gocv.CvtColor(frame, &grayFrame, gocv.ColorBGRToGray)
+		gocv.CvtColor(frame, &grayFrame, gocv.ColorRGBToGray)
 		frame.Close()
 		if firstFrame {
 			fmt.Println("[parseHistogram] read first frame from video", idx)
@@ -284,7 +284,7 @@ func parseHistogram(video *gocv.VideoCapture) ([][]int, error) {
 		idx++
 		// Convert to grayscale
 		var grayFrame = gocv.NewMat()
-		gocv.CvtColor(frame, &grayFrame, gocv.ColorBGRToGray)
+		gocv.CvtColor(frame, &grayFrame, gocv.ColorRGBToGray)
 		frame.Close()
 		if firstFrame {
 			fmt.Println("[parseHistogram] read first frame from video", idx)

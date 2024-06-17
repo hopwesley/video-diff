@@ -123,6 +123,12 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 15:
 		AITest()
 		return
+	case 16:
+		SimpleSpatial()
+		return
+	case 17:
+		ReadIosFile()
+		return
 	}
 }
 
@@ -169,7 +175,6 @@ func ComputeNcc() {
 
 	saveJson("a_histogram.txt", aHisGram)
 	saveJson("b_histogram.txt", bHisGram)
-
 }
 
 func AlignVideo() {
@@ -416,8 +421,8 @@ func getVideoFirstFrame(fileA, fileB string) (gocv.Mat, gocv.Mat) {
 
 	// Convert to grayscale
 	grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
-	gocv.CvtColor(frameA, &grayFrameA, gocv.ColorBGRToGray)
-	gocv.CvtColor(frameB, &grayFrameB, gocv.ColorBGRToGray)
+	gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+	gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
 	return grayFrameA, grayFrameB
 }
 
@@ -653,7 +658,7 @@ func ComputeG2() {
 	}
 
 	grayFrameA := gocv.NewMat()
-	gocv.CvtColor(img, &grayFrameA, gocv.ColorBGRToGray)
+	gocv.CvtColor(img, &grayFrameA, gocv.ColorRGBToGray)
 	defer img.Close()
 	gradB := computeG(grayFrameA)
 
@@ -874,8 +879,8 @@ func ComputeVideoDiff() {
 			break
 		}
 		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
-		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorBGRToGray)
-		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorBGRToGray)
+		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
 		frameA.Close()
 		frameB.Close()
 
@@ -922,7 +927,7 @@ func AITest() {
 	// 转换为灰度图像
 	gray := gocv.NewMat()
 	defer gray.Close()
-	gocv.CvtColor(src, &gray, gocv.ColorBGRToGray)
+	gocv.CvtColor(src, &gray, gocv.ColorRGBToGray)
 
 	// 应用高斯模糊减少噪点
 	gocv.GaussianBlur(gray, &gray, image.Point{X: 9, Y: 9}, 0, 0, gocv.BorderDefault)

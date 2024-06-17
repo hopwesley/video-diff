@@ -232,7 +232,7 @@ func procHistogram(video *gocv.VideoCapture) [][][]float64 {
 
 	// 转换为灰度图
 	gray := gocv.NewMat()
-	gocv.CvtColor(frame, &gray, gocv.ColorBGRToGray)
+	gocv.CvtColor(frame, &gray, gocv.ColorRGBToGray)
 	frame.Close()
 	Descriptor := make([][][]float64, LevelOfDes)
 	for l := 0; l < LevelOfDes; l++ {

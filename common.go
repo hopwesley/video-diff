@@ -288,6 +288,18 @@ func __saveNormalizedData(data [][]float64, fileName string) bool {
 	return gocv.IMWrite(fileName, img)
 }
 
+func saveGrayDataData(data [][]uint8, fileName string) bool {
+	height := len(data)
+	width := len(data[0])
+	img := gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
+	for y, row := range data {
+		for x, val := range row {
+			img.SetUCharAt(y, x, val)
+		}
+	}
+	return gocv.IMWrite(fileName, img)
+}
+
 func saveJson(fileName string, aHisGram [][]float64) {
 	file, _ := os.Create(fileName)
 	dataBytes, _ := json.Marshal(aHisGram)
