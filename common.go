@@ -269,8 +269,19 @@ func saveMatAsImage(mat gocv.Mat, filename string) bool {
 func __saveImg(mat gocv.Mat, filename string) bool {
 	converted := gocv.NewMat()
 	defer converted.Close()
-	mat.ConvertTo(&converted, gocv.MatTypeCV8U)
 
+	minVal, maxVal, _, _ := gocv.MinMaxIdx(mat)
+
+	// 中间值为最小值和最大值的平均
+	midVal := (minVal + maxVal) / 2.0
+
+	// 计算 alpha 和 beta
+	// 使得 midVal 映射到 128, maxVal 映射到 255, minVal 映射到 0
+	alpha := 255.0 / (maxVal - minVal)
+	beta := 128 - midVal*alpha
+
+	mat.ConvertToWithParams(&converted, gocv.MatTypeCV8U, alpha, beta)
+	//mat.ConvertTo(&converted, gocv.MatTypeCV8U)
 	// 写入文件
 	return gocv.IMWrite(filename, converted)
 }

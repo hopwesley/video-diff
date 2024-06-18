@@ -127,7 +127,7 @@ func testRun(_ *cobra.Command, _ []string) {
 		SimpleSpatial()
 		return
 	case 17:
-		ReadIosFile()
+		ValToImg("tmp/grayBuffer.json")
 		return
 	}
 }

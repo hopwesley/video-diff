@@ -43,12 +43,10 @@ func SimpleSpatial() {
 		panic(err)
 	}
 	saveJson("tmp/simple_grad_x.json", gradXFloat)
-	//fmt.Println("gradXFloat:", gradXFloat)
 	gradYFloat, err := matToFloatArray(gradY)
 	if err != nil {
 		panic(err)
 	}
-	//fmt.Println("gradYFloat:", gradYFloat)
 	saveJson("tmp/simple_grad_y.json", gradYFloat)
 }
 
@@ -90,25 +88,23 @@ func matToFloatArray(mat gocv.Mat) ([][]float64, error) {
 	return floatArray, nil
 }
 
-func ReadIosFile() {
-	file, err := os.Open("tmp/grayBuffer.json")
+func ValToImg(fileName string) {
+	file, err := os.Open(fileName)
 	if err != nil {
-		fmt.Println("Error opening file:", err)
-		return
+		panic(err)
 	}
 	defer file.Close()
 
 	byteValue, err := io.ReadAll(file)
 	if err != nil {
-		fmt.Println("Error reading file:", err)
-		return
-	}
+		panic(err)
 
+	}
 	var grayValues [][]uint8
 	err = json.Unmarshal(byteValue, &grayValues)
 	if err != nil {
-		fmt.Println("Error unmarshalling JSON:", err)
-		return
+		panic(err)
+
 	}
-	saveGrayDataData(grayValues, "tmp/grayBuffer.png")
+	saveGrayDataData(grayValues, fileName+".png")
 }
