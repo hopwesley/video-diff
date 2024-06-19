@@ -311,37 +311,36 @@ func saveGrayDataData(data [][]uint8, fileName string) bool {
 	return gocv.IMWrite(fileName, img)
 }
 
-func saveJson(fileName string, aHisGram [][]float64) {
+func saveJson(fileName string, data any) {
 	file, _ := os.Create(fileName)
-	dataBytes, _ := json.Marshal(aHisGram)
+	dataBytes, _ := json.Marshal(data)
 	file.Write(dataBytes)
 	file.Close()
 }
 
-func readJson(fileName string) ([][]float64, error) {
+func readJson(fileName string, data any) error {
 	// 打开文件
 	file, err := os.Open(fileName)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer file.Close()
 
 	// 读取文件内容到字节切片
 	dataBytes, err := io.ReadAll(file)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// 定义一个接收数据的变量
-	var data [][]float64
 
 	// 解码JSON数据到预定义的结构
-	err = json.Unmarshal(dataBytes, &data)
+	err = json.Unmarshal(dataBytes, data)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return data, nil
+	return nil
 }
 
 func normalizeAndConvertToImage(wbi [][]float64, filename string) bool {
@@ -410,4 +409,23 @@ func normalizeImage(wbi [][]float64) [][]float64 {
 	}
 
 	return normalizedWbi
+}
+
+func DataToImage(fileName string, grayValues [][]uint8) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	byteValue, err := io.ReadAll(file)
+	if err != nil {
+		panic(err)
+
+	}
+	err = json.Unmarshal(byteValue, &grayValues)
+	if err != nil {
+		panic(err)
+	}
+	saveGrayDataData(grayValues, fileName+".png")
 }

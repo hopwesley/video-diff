@@ -1,11 +1,8 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"gocv.io/x/gocv"
-	"io"
-	"os"
 )
 
 func SimpleSpatial() {
@@ -14,29 +11,42 @@ func SimpleSpatial() {
 		panic(err)
 	}
 
-	var frame = gocv.NewMat()
-	if ok := video.Read(&frame); !ok || frame.Empty() {
+	var frameA = gocv.NewMat()
+	var frameB = gocv.NewMat()
+	if ok := video.Read(&frameA); !ok || frameA.Empty() {
 		fmt.Println("Error reading video")
-		frame.Close()
+		frameA.Close()
 		return
 	}
-	var grayFrame = gocv.NewMat()
-	gocv.CvtColor(frame, &grayFrame, gocv.ColorRGBToGray)
-	frame.Close()
-	grayFloat, err := matToFloatArray(grayFrame)
+	if ok := video.Read(&frameB); !ok || frameB.Empty() {
+		fmt.Println("Error reading video")
+		frameB.Close()
+		return
+	}
+	var grayFrameA = gocv.NewMat()
+	var grayFrameB = gocv.NewMat()
+	gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+	gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+	frameA.Close()
+	frameB.Close()
+	grayFloat, err := matToFloatArray(grayFrameA)
 	if err != nil {
 		panic(err)
 	}
-	saveMatAsImage(grayFrame, "simple_gray")
+	saveMatAsImage(grayFrameA, "simple_gray")
 	saveJson("tmp/simple_gray.json", grayFloat)
 
 	gradX := gocv.NewMat()
 	gradY := gocv.NewMat()
+	gradT := gocv.NewMat()
 
-	gocv.Sobel(grayFrame, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
-	gocv.Sobel(grayFrame, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(grayFrameA, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(grayFrameA, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+	gocv.AbsDiff(grayFrameA, grayFrameB, &gradT)
+
 	saveMatAsImage(gradX, "simple_grad_x")
 	saveMatAsImage(gradY, "simple_grad_y")
+	saveMatAsImage(gradT, "simple_grad_t")
 
 	gradXFloat, err := matToFloatArray(gradX)
 	if err != nil {
@@ -48,6 +58,16 @@ func SimpleSpatial() {
 		panic(err)
 	}
 	saveJson("tmp/simple_grad_y.json", gradYFloat)
+	gradTFloat, err := matToFloatArray(gradT)
+	if err != nil {
+		panic(err)
+	}
+	saveJson("tmp/simple_grad_t.json", gradTFloat)
+	gradX.Close()
+	gradY.Close()
+	gradT.Close()
+	grayFrameA.Close()
+	grayFrameB.Close()
 }
 
 func matToFloatArray(mat gocv.Mat) ([][]float64, error) {
@@ -88,23 +108,97 @@ func matToFloatArray(mat gocv.Mat) ([][]float64, error) {
 	return floatArray, nil
 }
 
-func ValToImg(fileName string) {
-	file, err := os.Open(fileName)
+func IosQuantizeGradient() {
+	video, err := gocv.VideoCaptureFile(param.rawAFile)
 	if err != nil {
 		panic(err)
 	}
-	defer file.Close()
 
-	byteValue, err := io.ReadAll(file)
+	var frameA = gocv.NewMat()
+	var frameB = gocv.NewMat()
+	if ok := video.Read(&frameA); !ok || frameA.Empty() {
+		fmt.Println("Error reading video")
+		frameA.Close()
+		return
+	}
+	if ok := video.Read(&frameB); !ok || frameB.Empty() {
+		fmt.Println("Error reading video")
+		frameB.Close()
+		return
+	}
+	var grayFrameA = gocv.NewMat()
+	var grayFrameB = gocv.NewMat()
+	gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+	gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+	frameA.Close()
+	frameB.Close()
+	grayFloat, err := matToFloatArray(grayFrameA)
 	if err != nil {
 		panic(err)
-
 	}
-	var grayValues [][]uint8
-	err = json.Unmarshal(byteValue, &grayValues)
+	saveMatAsImage(grayFrameA, "simple_gray")
+	saveJson("tmp/simple_gray.json", grayFloat)
+
+	gradX := gocv.NewMat()
+	gradY := gocv.NewMat()
+	gradT := gocv.NewMat()
+
+	gocv.Sobel(grayFrameA, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(grayFrameA, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+	gocv.AbsDiff(grayFrameA, grayFrameB, &gradT)
+
+	__saveImg(gradT, "tmp/ios/simple_grad_t.png")
+	gradTFloat, err := matToFloatArray(gradT)
 	if err != nil {
 		panic(err)
-
 	}
-	saveGrayDataData(grayValues, fileName+".png")
+	saveJson("tmp/ios/simple_grad_t.json", gradTFloat)
+
+	qg := quantizeGradients2(&gradX, &gradY, &gradT)
+	result := computeFrameVector(qg)
+	saveJson("tmp/ios/simple_quantize.json", result)
+	gradX.Close()
+	gradY.Close()
+	gradT.Close()
+
+	grayFrameA.Close()
+	grayFrameB.Close()
+}
+
+func CompareIosAndMacQG() {
+	var iosData [][][]float64
+	var iosImgData [][]uint8
+	var macData [][][]float64
+	var macImgData [][]uint8
+
+	_ = readJson("tmp/ios/simple_quantize.json", &macData)
+	_ = readJson("tmp/ios/quantizeBuffer.json", &iosData)
+
+	iosImgData = make([][]uint8, len(iosData))
+	for row, rowData := range iosData {
+		iosImgData[row] = make([]uint8, len(rowData))
+		for col, columnData := range rowData {
+			var sum = 0.0
+			for _, value := range columnData {
+				sum += value
+			}
+			iosImgData[row][col] = uint8(sum*10+8) % 255
+		}
+	}
+
+	macImgData = make([][]uint8, len(macData))
+
+	for row, rowData := range macData {
+		macImgData[row] = make([]uint8, len(rowData))
+		for col, columnData := range rowData {
+			var sum = 0.0
+			for _, value := range columnData {
+				sum += value
+			}
+			macImgData[row][col] = uint8(sum*10+8) % 255
+		}
+	}
+
+	saveGrayDataData(iosImgData, "tmp/ios/quantizeBuffer.json.png")
+	saveGrayDataData(macImgData, "tmp/ios/simple_quantize.json.png")
 }

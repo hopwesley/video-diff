@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	//PercentForMaxDepthToTimeAlign = 0.5 //20%of all frames to find the time start
 	PrefixForAlignedFile = "align_"
 	MaxPairToMatch       = 3
 	threshold            = 1.29107 // 根据论文描述的阈值

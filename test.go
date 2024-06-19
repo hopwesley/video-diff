@@ -127,7 +127,10 @@ func testRun(_ *cobra.Command, _ []string) {
 		SimpleSpatial()
 		return
 	case 17:
-		ValToImg("tmp/grayBuffer.json")
+		IosQuantizeGradient()
+		return
+	case 18:
+		CompareIosAndMacQG()
 		return
 	}
 }
@@ -178,8 +181,10 @@ func ComputeNcc() {
 }
 
 func AlignVideo() {
-	aHisGram, _ := readJson("a_histogram.txt")
-	bHisGram, _ := readJson("b_histogram.txt")
+	var aHisGram [][]float64
+	var bHisGram [][]float64
+	_ = readJson("a_histogram.txt", &aHisGram)
+	_ = readJson("b_histogram.txt", &bHisGram)
 	ncc := nccOfAllFrame(aHisGram, bHisGram)
 	saveJson("ncc.txt", ncc)
 	startA, startB := findMaxNCCSequence(ncc, testTool.window)
@@ -751,8 +756,8 @@ func ComputeFC() {
 
 	width := frameA.Cols()
 	height := frameA.Rows()
-
-	wtVal, _ := readJson("wt_at_level_0.txt")
+	var wtVal [][]float64
+	_ = readJson("wt_at_level_0.txt", &wtVal)
 
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	//aColor := color.RGBA{R: grayValue, G: grayValue, B: grayValue, A: 255}
@@ -774,7 +779,9 @@ func ComputeFC() {
 // calculates the given percentile of a slice of float64 values.
 
 func ComputeOverlay() {
-	wtVal, _ := readJson("wt_at_level_0.txt")
+	var wtVal [][]float64
+	_ = readJson("wt_at_level_0.txt", &wtVal)
+
 	frameA, frameB := getVideoFirstFrame("align_A.mp4", "align_B.mp4")
 	defer frameA.Close()
 	defer frameB.Close()
