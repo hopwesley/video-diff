@@ -182,7 +182,7 @@ func CompareIosAndMacQG() {
 			for _, value := range columnData {
 				sum += value
 			}
-			iosImgData[row][col] = uint8(sum*10+8) % 255
+			iosImgData[row][col] = uint8(int(sum*10+8) % 255)
 		}
 	}
 
@@ -195,7 +195,7 @@ func CompareIosAndMacQG() {
 			for _, value := range columnData {
 				sum += value
 			}
-			macImgData[row][col] = uint8(sum*10+8) % 255
+			macImgData[row][col] = uint8(int(sum*10+8) % 255)
 		}
 	}
 
