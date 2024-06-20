@@ -132,6 +132,9 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 18:
 		CompareIosAndMacQG()
 		return
+	case 19:
+		AverageGradientOfBlock(32)
+		return
 	}
 }
 
