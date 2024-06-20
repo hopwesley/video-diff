@@ -177,46 +177,31 @@ func IosQuantizeGradient() {
 		saveJson("tmp/ios/simple_quantize.json", qg)
 	})
 }
-func gradientToImg(macJsonFile, iosJsonFile string) {
-	var iosData [][][]float64
-	var iosImgData [][]uint8
-	var macData [][][]float64
-	var macImgData [][]uint8
+func gradientToImg(file string) {
+	var data [][][]float64
+	var imgData [][]uint8
 
-	_ = readJson(macJsonFile, &macData)
-	_ = readJson(iosJsonFile, &iosData)
+	_ = readJson(file, &data)
 
-	iosImgData = make([][]uint8, len(iosData))
-	for row, rowData := range iosData {
-		iosImgData[row] = make([]uint8, len(rowData))
+	imgData = make([][]uint8, len(data))
+	for row, rowData := range data {
+		imgData[row] = make([]uint8, len(rowData))
 		for col, columnData := range rowData {
 			var sum = 0.0
 			for _, value := range columnData {
 				sum += value
 			}
-			iosImgData[row][col] = uint8(int(sum*10+8) % 255)
+			imgData[row][col] = uint8(int(sum*10+8) % 255)
 		}
 	}
 
-	macImgData = make([][]uint8, len(macData))
-
-	for row, rowData := range macData {
-		macImgData[row] = make([]uint8, len(rowData))
-		for col, columnData := range rowData {
-			var sum = 0.0
-			for _, value := range columnData {
-				sum += value
-			}
-			macImgData[row][col] = uint8(int(sum*10+8) % 255)
-		}
-	}
-
-	saveGrayDataData(iosImgData, macJsonFile+".png")
-	saveGrayDataData(macImgData, iosJsonFile+".png")
+	saveGrayDataData(imgData, file+".png")
 }
 
 func CompareIosAndMacQG() {
-	gradientToImg("tmp/ios/simple_quantize.json", "tmp/ios/quantizeBuffer.json")
+	//gradientToImg("tmp/ios/simple_quantize.json", "tmp/ios/quantizeBuffer.json")
+	gradientToImg("tmp/ios/block_quantize.json")
+	gradientToImg("tmp/ios/blockGradientBuffer.json")
 }
 
 func AverageGradientOfBlock(blockSize int) {
@@ -238,8 +223,8 @@ func AverageGradientOfBlock(blockSize int) {
 }
 
 func quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height int, gradientX, gradientY, gradientT *gocv.Mat) (histogram [10]float64) {
-	var startX = rowIdx * blockSize
-	var startY = colIdx * blockSize
+	var startX = colIdx * blockSize
+	var startY = rowIdx * blockSize
 	var endX = startX + blockSize
 	if endX > width {
 		endX = width
@@ -255,15 +240,15 @@ func quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height int, gradi
 		count        = 0.0
 	)
 
-	for y := startX; y < endY; y++ {
-		for x := startX; x < endX; x++ {
-			sumGradientX += float64(gradientX.GetShortAt(x, y))
-			sumGradientY += float64(gradientY.GetShortAt(x, y))
-			sumGradientT += float64(gradientT.GetUCharAt(x, y))
+	for row := startY; row < endY; row++ {
+		for col := startX; col < endX; col++ {
+			sumGradientX += float64(gradientX.GetShortAt(row, col))
+			sumGradientY += float64(gradientY.GetShortAt(row, col))
+			sumGradientT += float64(gradientT.GetUCharAt(row, col))
 			count++
 		}
 	}
-
+	//fmt.Println("sumGradientX:", sumGradientX, "sumGradientY:", sumGradientY, "sumGradientT:", sumGradientT, "count:", count)
 	if count == 0 {
 		return
 	}
