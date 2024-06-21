@@ -6,6 +6,11 @@ import (
 	"math"
 )
 
+const (
+	DescriptorParam_M = 2
+	DescriptorParam_m = 4
+)
+
 func SimpleSpatial() {
 	video, err := gocv.VideoCaptureFile(param.rawAFile)
 	if err != nil {
@@ -204,8 +209,8 @@ func CompareIosAndMacQG() {
 	gradientToImg("tmp/ios/blockGradientBuffer.json")
 }
 
-func AverageGradientOfBlock(blockSize int) {
-
+func AverageGradientOfBlock(S_0 int) {
+	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
 	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
 		width, height := int(w), int(h)
 		var numberOfX = (width + blockSize - 1) / blockSize
@@ -217,8 +222,7 @@ func AverageGradientOfBlock(blockSize int) {
 				blockGradient[rowIdx][colIdx] = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
 			}
 		}
-		saveJson("tmp/ios/block_quantize.json", blockGradient)
-
+		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradien_%d.json", S_0), blockGradient)
 	})
 }
 
@@ -281,4 +285,71 @@ func quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height int, gradi
 	}
 
 	return
+}
+
+type CenterPoint struct {
+	indexX  int
+	indexY  int
+	weights [][]float64
+}
+
+func calculateCenters(width, height, S float64) (centersOfDesc []CenterPoint) {
+	numberXOfBlock := DescriptorParam_M * DescriptorParam_m
+	numberYOfBlock := DescriptorParam_M * DescriptorParam_m
+	blockSize := S / float64(numberXOfBlock)
+	sigma := float64(S) / 2.0 // Standard deviation for Gaussian kernel
+	centerIdxX, centerIdxY := 0, 0
+	for centerY := S / 2; centerY < height; centerY += blockSize {
+		centerIdxX++
+		for centerX := S / 2; centerX < width; centerX += blockSize {
+			if centerX+S/2 > width || centerY+S/2 > height {
+				continue
+			}
+			centerIdxY++
+			point := Point{X: centerX, Y: centerY}
+
+			centerPoint := CenterPoint{
+				indexX:  centerIdxX,
+				indexY:  centerIdxY,
+				weights: make([][]float64, numberYOfBlock),
+			}
+			for i := 0; i < DescriptorParam_M; i++ {
+				for j := 0; j < DescriptorParam_M; j++ {
+
+				}
+			}
+			blockStartX := point.X - S/2 + blockSize/2
+			blockStartY := point.Y - S/2 + blockSize/2
+
+			centerPoint.weights = make([][]float64, numberYOfBlock)
+			for row := 0; row < numberYOfBlock; row++ {
+				centerPoint.weights[row] = make([]float64, numberXOfBlock)
+				for col := 0; col < numberXOfBlock; col++ {
+					blockCenter := Point{X: blockStartX + float64(col)*blockSize, Y: blockStartY + float64(row)*blockSize}
+					centerPoint.weights[row][col] = blockCenter.GaussianKernel(point, sigma)
+				}
+			}
+			centersOfDesc = append(centersOfDesc, centerPoint)
+		}
+	}
+	return
+}
+
+func GradientOfCell(S_0 int) {
+	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
+	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+		_ = calculateCenters(w, h, float64(S_0))
+		width, height := int(w), int(h)
+		var numberOfX = (width + blockSize - 1) / blockSize
+		var numberOfY = (height + blockSize - 1) / blockSize
+		var blockGradient = make([][][10]float64, numberOfY)
+		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
+			blockGradient[rowIdx] = make([][10]float64, numberOfX)
+			for colIdx := 0; colIdx < numberOfX; colIdx++ {
+				blockGradient[rowIdx][colIdx] = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
+			}
+		}
+		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradien_%d.json", S_0), blockGradient)
+
+	})
 }

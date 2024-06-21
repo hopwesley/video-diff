@@ -133,12 +133,12 @@ func testRun(_ *cobra.Command, _ []string) {
 		CompareIosAndMacQG()
 		return
 	case 19:
-		S_o := 32
-		M := 2
-		m := 4
-		blockSize := S_o / M / m
-		AverageGradientOfBlock(blockSize)
+		S_0 := 32
+		AverageGradientOfBlock(S_0)
 		return
+	case 20:
+		var S_0 = 32
+		GradientOfCell(S_0)
 	}
 }
 
