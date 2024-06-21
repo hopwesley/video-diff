@@ -137,6 +137,13 @@ func testRun(_ *cobra.Command, _ []string) {
 		AverageGradientOfBlock(S_0)
 		return
 	case 20:
+		S_0 := 32
+		FrameQForTimeAlign(param.rawAFile, S_0)
+		FrameQForTimeAlign(param.rawBFile, S_0)
+		return
+	case 21:
+		AlignFrame()
+	case 22:
 		var S_0 = 32
 		GradientOfCell(S_0)
 	}
