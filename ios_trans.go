@@ -451,6 +451,7 @@ func FrameQForTimeAlign(file string, S_0 int) []Histogram {
 	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_q_%s_%d.json", file, S_0), frameHistogram)
 	return frameHistogram
 }
+
 func normalizedCrossCorrelation(A, B []Histogram, maxOffset int) (int, float64) {
 	bestOffset := 0
 	maxCorrelation := -1.0
