@@ -130,7 +130,8 @@ func testRun(_ *cobra.Command, _ []string) {
 		IosQuantizeGradient()
 		return
 	case 18:
-		CompareIosAndMacQG()
+		grayDataToImg("tmp/ios/grayBufferA.json")
+		grayDataToImg("tmp/ios/grayBufferB.json")
 		return
 	case 19:
 		S_0 := 32

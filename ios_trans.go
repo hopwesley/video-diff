@@ -182,7 +182,7 @@ func IosQuantizeGradient() {
 		saveJson("tmp/ios/simple_quantize.json", qg)
 	})
 }
-func gradientToImg(file string) {
+func histogramToImg(file string) {
 	var data [][][]float64
 	var imgData [][]uint8
 
@@ -201,12 +201,6 @@ func gradientToImg(file string) {
 	}
 
 	saveGrayDataData(imgData, file+".png")
-}
-
-func CompareIosAndMacQG() {
-	//gradientToImg("tmp/ios/simple_quantize.json", "tmp/ios/quantizeBuffer.json")
-	gradientToImg("tmp/ios/block_quantize.json")
-	gradientToImg("tmp/ios/blockGradientBuffer.json")
 }
 
 type Histogram [10]float64
@@ -250,7 +244,7 @@ func AverageGradientOfBlock(S_0 int) {
 			}
 		}
 		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradient_%d.json", S_0), blockGradient)
-		saveJson(fmt.Sprintf("tmp/ios/cpu_frame_gradient_%d.json", S_0), frameHistogram)
+		saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%d.json", S_0), frameHistogram)
 	})
 }
 

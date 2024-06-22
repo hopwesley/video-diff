@@ -411,7 +411,7 @@ func normalizeImage(wbi [][]float64) [][]float64 {
 	return normalizedWbi
 }
 
-func DataToImage(fileName string, grayValues [][]uint8) {
+func grayDataToImg(fileName string) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		panic(err)
@@ -423,6 +423,7 @@ func DataToImage(fileName string, grayValues [][]uint8) {
 		panic(err)
 
 	}
+	var grayValues [][]uint8
 	err = json.Unmarshal(byteValue, &grayValues)
 	if err != nil {
 		panic(err)
