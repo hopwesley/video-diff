@@ -182,26 +182,6 @@ func IosQuantizeGradient() {
 		saveJson("tmp/ios/simple_quantize.json", qg)
 	})
 }
-func histogramToImg(file string) {
-	var data [][][]float64
-	var imgData [][]uint8
-
-	_ = readJson(file, &data)
-
-	imgData = make([][]uint8, len(data))
-	for row, rowData := range data {
-		imgData[row] = make([]uint8, len(rowData))
-		for col, columnData := range rowData {
-			var sum = 0.0
-			for _, value := range columnData {
-				sum += value
-			}
-			imgData[row][col] = uint8(int(sum*10+8) % 255)
-		}
-	}
-
-	saveGrayDataData(imgData, file+".png")
-}
 
 type Histogram [10]float64
 
@@ -230,6 +210,10 @@ func (h *Histogram) l2Norm() float64 {
 func AverageGradientOfBlock(S_0 int) {
 	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
 	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+		__saveImg(*x, "tmp/ios/cpu_gradientXBuffer.png")
+		__saveImg(*y, "tmp/ios/cpu_gradientYBuffer.png")
+		__saveImg(*t, "tmp/ios/cpu_gradientTBuffer.png")
+
 		width, height := int(w), int(h)
 		var numberOfX = (width + blockSize - 1) / blockSize
 		var numberOfY = (height + blockSize - 1) / blockSize
@@ -243,6 +227,7 @@ func AverageGradientOfBlock(S_0 int) {
 				frameHistogram.Add(hg)
 			}
 		}
+		__histogramToImg(blockGradient, "tmp/ios/cpu_block_gradient_.png")
 		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradient_%d.json", S_0), blockGradient)
 		saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%d.json", S_0), frameHistogram)
 	})
@@ -474,22 +459,6 @@ func normalizedCrossCorrelation(A, B []Histogram, maxOffset int) (int, float64) 
 				maxCorrelation = correlation
 				bestOffset = offset
 			}
-		}
-	}
-
-	return bestOffset, maxCorrelation
-}
-
-func slidingWindowAlignment(A, B []Histogram, windowSize, stepSize, maxOffset int) (int, float64) {
-	bestOffset := 0
-	maxCorrelation := -1.0
-
-	for i := 0; i < len(A)-windowSize+1; i += stepSize {
-		windowA := A[i : i+windowSize]
-		offset, correlation := normalizedCrossCorrelation(windowA, B, maxOffset)
-		if correlation > maxCorrelation {
-			maxCorrelation = correlation
-			bestOffset = offset
 		}
 	}
 

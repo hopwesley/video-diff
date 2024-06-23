@@ -402,7 +402,6 @@ func normalizeImage(wbi [][]float64) [][]float64 {
 	for y, row := range wbi {
 		normalizedWbi[y] = make([]float64, len(wbi[0]))
 		for x, val := range row {
-
 			normalizedVal := (val - minVal) / (maxVal - minVal) // 将值归一化到0到1
 			normalizedWbi[y][x] = normalizedVal
 		}
@@ -429,4 +428,93 @@ func grayDataToImg(fileName string) {
 		panic(err)
 	}
 	saveGrayDataData(grayValues, fileName+".png")
+}
+
+func gradientToImg(fileName string) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	byteValue, err := io.ReadAll(file)
+	if err != nil {
+		panic(err)
+
+	}
+	var gradientValues [][]int16
+	err = json.Unmarshal(byteValue, &gradientValues)
+	if err != nil {
+		panic(err)
+	}
+
+	maxVal := gradientValues[0][0]
+	minVal := gradientValues[0][0]
+	for _, row := range gradientValues {
+		for _, val := range row {
+			if val > maxVal {
+				maxVal = val
+			}
+			if val < minVal {
+				minVal = val
+			}
+		}
+	}
+	//fmt.Println("max value:", maxVal, "min value:", minVal)
+	if maxVal == 0 {
+		maxVal = 1
+	}
+	var grayValues = make([][]uint8, len(gradientValues))
+	for y, row := range gradientValues {
+		grayValues[y] = make([]uint8, len(gradientValues[0]))
+		for x, val := range row {
+			normalizedVal := float64(val-minVal) / float64(maxVal-minVal) // 将值归一化到0到1
+			grayVal := uint8(normalizedVal * 255)                         // 将值映射到0到255
+			grayValues[y][x] = grayVal
+		}
+	}
+	saveGrayDataData(grayValues, fileName+".png")
+}
+
+func histogramToImg(file string) {
+	var data [][][10]float64
+	_ = readJson(file, &data)
+	__histogramToImg(data, file)
+}
+
+func __histogramToImg(data [][][10]float64, file string) {
+	var imgData [][]uint8
+	var imgDataTmp [][]float64
+
+	imgDataTmp = make([][]float64, len(data))
+	maxVal, minVal := 0.0, 0.0
+	for row, rowData := range data {
+		imgDataTmp[row] = make([]float64, len(rowData))
+		for col, columnData := range rowData {
+			var sum = 0.0
+			for _, value := range columnData {
+				sum += value
+			}
+			imgDataTmp[row][col] = sum
+
+			if sum > maxVal {
+				maxVal = sum
+			}
+			if sum < minVal {
+				minVal = sum
+			}
+		}
+	}
+
+	imgData = make([][]uint8, len(data))
+	for y, row := range imgDataTmp {
+		imgData[y] = make([]uint8, len(imgDataTmp[0]))
+		for x, val := range row {
+			normalizedVal := (val - minVal) / (maxVal - minVal) // 将值归一化到0到1
+			grayVal := uint8(normalizedVal * 255)               // 将值映射到0到255
+			imgData[y][x] = grayVal
+		}
+	}
+
+	saveGrayDataData(imgData, file+".png")
 }
