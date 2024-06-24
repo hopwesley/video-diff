@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"gocv.io/x/gocv"
 	"math"
+	"reflect"
 )
 
 const (
@@ -210,6 +211,14 @@ func (h *Histogram) l2Norm() float64 {
 func AverageGradientOfBlock(S_0 int) {
 	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
 	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+
+		grayFloat, _ := matToFloatArray(*x)
+		saveJson("tmp/ios/cpu_gradientXBuffer.json", grayFloat)
+		grayFloat, _ = matToFloatArray(*y)
+		saveJson("tmp/ios/cpu_gradientYBuffer.json", grayFloat)
+		grayFloat, _ = matToFloatArray(*t)
+		saveJson("tmp/ios/cpu_gradientTBuffer.json", grayFloat)
+
 		__saveImg(*x, "tmp/ios/cpu_gradientXBuffer.png")
 		__saveImg(*y, "tmp/ios/cpu_gradientYBuffer.png")
 		__saveImg(*t, "tmp/ios/cpu_gradientTBuffer.png")
@@ -423,11 +432,10 @@ func FrameQForTimeAlign(file string, S_0 int) []Histogram {
 				hgOneFrame.Add(hg)
 			}
 		}
-
 		frameHistogram = append(frameHistogram, hgOneFrame)
 	})
 
-	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_q_%s_%d.json", file, S_0), frameHistogram)
+	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%s_%d.json", file, S_0), frameHistogram)
 	return frameHistogram
 }
 
@@ -543,4 +551,119 @@ func AlignFrame() {
 	fmt.Printf("Best A Index: %d, Best B Index: %d, Max Correlation: %f\n", bestAIndex, bestBIndex, maxCorrelation)
 	extractFrames("A.mp4", "tmp/ios/align_a.mp4", bestAIndex, bestAIndex+120)
 	extractFrames("B.mp4", "tmp/ios/align_b.mp4", bestBIndex, bestBIndex+120)
+}
+func testCpuOrGpu() {
+	//var data [][][]float64
+	//var result [10]float64
+	//readJson("tmp/ios/gpu_frame_quantity_4_0.json", &data)
+	//for i := 0; i < len(data); i++ {
+	//	for j := 0; j < len(data[i]); j++ {
+	//		for k := 0; k < 10; k++ {
+	//			result[k] += data[i][j][k]
+	//		}
+	//	}
+	//}
+	//saveJson("tmp/ios/gpu_result_with_cpu.json", result)
+	var grayA [][]uint8
+	var grayB [][]uint8
+	readJson("tmp/ios/gpu_grayBufferA_0.json", &grayA)
+	readJson("tmp/ios/gpu_grayBufferB_0.json", &grayB)
+	curFrame, _ := arrayToMat(grayB)
+	preGrayFrame, _ := arrayToMat(grayA)
+	gradX := gocv.NewMat()
+	gradY := gocv.NewMat()
+	gradT := gocv.NewMat()
+
+	gocv.Sobel(curFrame, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(curFrame, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+	gocv.AbsDiff(curFrame, preGrayFrame, &gradT)
+
+	grayFloat, _ := matToFloatArray(gradX)
+	saveJson("tmp/ios/cpu_gpu_gradientXBuffer.json", grayFloat)
+	grayFloat, _ = matToFloatArray(gradY)
+	saveJson("tmp/ios/cpu_gpu_gradientYBuffer.json", grayFloat)
+	grayFloat, _ = matToFloatArray(gradT)
+	saveJson("tmp/ios/cpu_gpu_gradientTBuffer.json", grayFloat)
+
+	width := len(grayA[0])
+	height := len(grayA)
+	blockSize := 32 / DescriptorParam_M / DescriptorParam_m
+	var numberOfX = (width + blockSize - 1) / blockSize
+	var numberOfY = (height + blockSize - 1) / blockSize
+	var blockGradient = make([][][10]float64, numberOfY)
+	var frameHistogram Histogram
+	for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
+		blockGradient[rowIdx] = make([][10]float64, numberOfX)
+		for colIdx := 0; colIdx < numberOfX; colIdx++ {
+			hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, &gradX, &gradY, &gradT)
+			blockGradient[rowIdx][colIdx] = hg
+			frameHistogram.Add(hg)
+		}
+	}
+	saveJson("tmp/ios/cpu_gpu_block_gradient_32.json", blockGradient)
+	saveJson(fmt.Sprintf("tmp/ios/cpu_gpu_frame_histogram_32.json"), frameHistogram)
+
+	gradX.Close()
+	gradY.Close()
+	gradT.Close()
+
+	preGrayFrame.Close()
+	curFrame.Close()
+}
+
+func arrayToMat(array interface{}) (gocv.Mat, error) {
+	// Ensure the input is a slice of slices
+	v := reflect.ValueOf(array)
+	if v.Kind() != reflect.Slice || v.Len() == 0 || v.Index(0).Kind() != reflect.Slice {
+		return gocv.NewMat(), fmt.Errorf("input must be a non-empty slice of slices")
+	}
+
+	rows := v.Len()
+	cols := v.Index(0).Len()
+	if cols == 0 {
+		return gocv.NewMat(), fmt.Errorf("input array has no columns")
+	}
+
+	var mat gocv.Mat
+	var matType gocv.MatType
+
+	// Determine the type of the elements and create the appropriate Mat
+	elemType := v.Index(0).Index(0).Type()
+	switch elemType.Kind() {
+	case reflect.Float64:
+		mat = gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV64F)
+		matType = gocv.MatTypeCV64F
+		break
+	case reflect.Int16:
+		mat = gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV16S)
+		matType = gocv.MatTypeCV16S
+		break
+	case reflect.Uint8:
+		mat = gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV8U)
+		matType = gocv.MatTypeCV8U
+		break
+	default:
+		return gocv.NewMat(), fmt.Errorf("unsupported element type: %v", elemType)
+	}
+
+	// Fill the Mat with the values from the input array
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			switch matType {
+			case gocv.MatTypeCV64F:
+				mat.SetDoubleAt(i, j, v.Index(i).Index(j).Float())
+				break
+			case gocv.MatTypeCV16S:
+				mat.SetShortAt(i, j, int16(v.Index(i).Index(j).Int()))
+				break
+			case gocv.MatTypeCV8U:
+				mat.SetUCharAt(i, j, uint8(v.Index(i).Index(j).Uint()))
+				break
+			default:
+				panic("")
+			}
+		}
+	}
+
+	return mat, nil
 }

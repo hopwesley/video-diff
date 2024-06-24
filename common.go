@@ -442,7 +442,7 @@ func gradientToImg(fileName string) {
 		panic(err)
 
 	}
-	var gradientValues [][]int16
+	var gradientValues [][]float64
 	err = json.Unmarshal(byteValue, &gradientValues)
 	if err != nil {
 		panic(err)

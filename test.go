@@ -130,16 +130,20 @@ func testRun(_ *cobra.Command, _ []string) {
 		IosQuantizeGradient()
 		return
 	case 18:
-		grayDataToImg("tmp/ios/gpu_grayBufferA.json")
-		grayDataToImg("tmp/ios/gpu_grayBufferB.json")
-		grayDataToImg("tmp/ios/gpu_gradientTBuffer.json")
-		////
-		//gradientToImg("tmp/ios/gpu_test_gradientXBuffer.json")
-		//gradientToImg("tmp/ios/gpu_test_gradientYBuffer.json")
-		histogramToImg("tmp/ios/gpu_frame_quantity_4.json")
-		gradientToImg("tmp/ios/gpu_gradientXBuffer.json")
-		gradientToImg("tmp/ios/gpu_gradientYBuffer.json")
-		//histogramToImg("tmp/ios/gpu_block_gradient_32.json")
+		testCpuOrGpu()
+		//grayDataToImg("tmp/ios/gpu_grayBufferA.json")
+		//grayDataToImg("tmp/ios/gpu_grayBufferB.json")
+		//grayDataToImg("tmp/ios/gpu_gradientTBuffer.json")
+		//histogramToImg("tmp/ios/gpu_frame_quantity_4.json")
+		//gradientToImg("tmp/ios/gpu_gradientXBuffer.json")
+		//gradientToImg("tmp/ios/gpu_gradientYBuffer.json")
+		//histogramToImg("tmp/ios/cpu_block_gradient_32.json")
+		//
+		//gradientToImg("tmp/ios/gpu_frame_histogram_A.json")
+		//gradientToImg("tmp/ios/gpu_frame_histogram_B.json")
+		//gradientToImg("tmp/ios/cpu_frame_histogram_A_1.mp4_32.json")
+		//gradientToImg("tmp/ios/cpu_frame_histogram_B_1.mp4_32.json")
+
 		return
 	case 19:
 		S_0 := 32
