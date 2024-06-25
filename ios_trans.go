@@ -405,74 +405,6 @@ func readingAllFrameOfVideo(video *gocv.VideoCapture, callback frameCallback2) {
 
 type frameCallback2 func(a, b, x, y, t *gocv.Mat)
 
-func FrameQForTimeAlign(file string, S_0 int) []Histogram {
-	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
-	var frameHistogram []Histogram
-	video, err := gocv.VideoCaptureFile(file)
-	if err != nil {
-		panic(err)
-	}
-	w := video.Get(gocv.VideoCaptureFrameWidth)
-	h := video.Get(gocv.VideoCaptureFrameHeight)
-	frameCount := video.Get(gocv.VideoCaptureFrameCount)
-	fmt.Printf("video info: file:%s, width:%.2f height:%.2f frames:%.2f\n", file, w, h, frameCount)
-
-	width, height := int(w), int(h)
-	var numberOfX = (width + blockSize - 1) / blockSize
-	var numberOfY = (height + blockSize - 1) / blockSize
-
-	var counter = 0
-	readingAllFrameOfVideo(video, func(a, b, x, y, t *gocv.Mat) {
-		fmt.Println("frame finished id=>", counter)
-		counter++
-		var hgOneFrame Histogram
-		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
-			for colIdx := 0; colIdx < numberOfX; colIdx++ {
-				var hg = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
-				hgOneFrame.Add(hg)
-			}
-		}
-		frameHistogram = append(frameHistogram, hgOneFrame)
-	})
-
-	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%s_%d.json", file, S_0), frameHistogram)
-	return frameHistogram
-}
-
-func normalizedCrossCorrelation(A, B []Histogram, maxOffset int) (int, float64) {
-	bestOffset := 0
-	maxCorrelation := -1.0
-
-	for offset := -maxOffset; offset <= maxOffset; offset++ {
-		var sum float64
-		count := 0
-
-		for t := 0; t < len(A); t++ {
-			bt := t + offset
-			if bt >= 0 && bt < len(B) {
-				dot := A[t].dotProduct(B[bt])
-				normA := A[t].l2Norm()
-				normB := B[bt].l2Norm()
-				if normA != 0 && normB != 0 {
-					sum += dot / (normA * normB)
-					count++
-				}
-			}
-		}
-
-		if count > 0 {
-			correlation := sum / float64(count)
-			fmt.Printf("Offset: %d, Correlation: %f\n", offset, correlation)
-			if correlation > maxCorrelation {
-				maxCorrelation = correlation
-				bestOffset = offset
-			}
-		}
-	}
-
-	return bestOffset, maxCorrelation
-}
-
 func calculateSegmentCorrelation(segmentA, segmentB []Histogram) float64 {
 	var sum float64
 	count := len(segmentA)
@@ -539,19 +471,6 @@ func extractFrames(inputFile string, outputFile string, startFrame int, endFrame
 	}
 }
 
-func AlignFrame() {
-	var AQ []Histogram
-	var BQ []Histogram
-	readJson("tmp/ios/cpu_frame_q_A.mp4_32.json", &AQ)
-	readJson("tmp/ios/cpu_frame_q_B.mp4_32.json", &BQ)
-	segmentLength := 20
-	//bestOffset, maxCorrelation := normalizedCrossCorrelation(AQ, BQ, maxOffset)
-	bestAIndex, bestBIndex, maxCorrelation := findBestSegmentAlignment(AQ, BQ, segmentLength)
-
-	fmt.Printf("Best A Index: %d, Best B Index: %d, Max Correlation: %f\n", bestAIndex, bestBIndex, maxCorrelation)
-	extractFrames("A.mp4", "tmp/ios/align_a.mp4", bestAIndex, bestAIndex+120)
-	extractFrames("B.mp4", "tmp/ios/align_b.mp4", bestBIndex, bestBIndex+120)
-}
 func testCpuOrGpu() {
 	//var data [][][]float64
 	//var result [10]float64
@@ -667,4 +586,110 @@ func arrayToMat(array interface{}) (gocv.Mat, error) {
 	}
 
 	return mat, nil
+}
+
+// normalizedCrossCorrelation 函数
+func normalizedCrossCorrelation(AQ, BQ []Histogram) (int, float64) {
+	maxCorr := -1.0
+	bestOffset := 0
+
+	lenA := len(AQ)
+	lenB := len(BQ)
+
+	for offset := -lenB + 1; offset < lenA; offset++ {
+		sumDotProduct := 0.0
+		sumNormA := 0.0
+		sumNormB := 0.0
+		count := 0
+
+		for i := 0; i < lenA; i++ {
+			j := i - offset
+			if j >= 0 && j < lenB {
+				dotProduct := AQ[i].dotProduct(BQ[j])
+				normA := AQ[i].l2Norm()
+				normB := BQ[j].l2Norm()
+
+				sumDotProduct += dotProduct
+				sumNormA += normA * normA
+				sumNormB += normB * normB
+				count++
+			}
+		}
+
+		if count > 0 {
+			normFactor := math.Sqrt(sumNormA * sumNormB)
+			if normFactor > 0 {
+				corr := sumDotProduct / normFactor
+				if corr > maxCorr {
+					maxCorr = corr
+					bestOffset = offset
+				}
+			}
+		}
+	}
+
+	return bestOffset, maxCorr
+}
+
+func FrameQForTimeAlign(file string, S_0 int) []Histogram {
+	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
+	var frameHistogram []Histogram
+	video, err := gocv.VideoCaptureFile(file)
+	if err != nil {
+		panic(err)
+	}
+	w := video.Get(gocv.VideoCaptureFrameWidth)
+	h := video.Get(gocv.VideoCaptureFrameHeight)
+	frameCount := video.Get(gocv.VideoCaptureFrameCount)
+	fmt.Printf("video info: file:%s, width:%.2f height:%.2f frames:%.2f\n", file, w, h, frameCount)
+
+	width, height := int(w), int(h)
+	var numberOfX = (width + blockSize - 1) / blockSize
+	var numberOfY = (height + blockSize - 1) / blockSize
+
+	var counter = 0
+	readingAllFrameOfVideo(video, func(a, b, x, y, t *gocv.Mat) {
+		fmt.Println("frame finished id=>", counter)
+		counter++
+		var hgOneFrame Histogram
+		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
+			for colIdx := 0; colIdx < numberOfX; colIdx++ {
+				var hg = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
+				hgOneFrame.Add(hg)
+			}
+		}
+		frameHistogram = append(frameHistogram, hgOneFrame)
+	})
+
+	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%s_%d.json", file, S_0), frameHistogram)
+	return frameHistogram
+}
+
+func AlignFrame() {
+	var AQ []Histogram
+	var BQ []Histogram
+	readJson("tmp/ios/cpu_frame_q_A.mp4_32.json", &AQ)
+	readJson("tmp/ios/cpu_frame_q_B.mp4_32.json", &BQ)
+	segmentLength := 20
+	//bestOffset, maxCorrelation := normalizedCrossCorrelation(AQ, BQ, maxOffset)
+	bestAIndex, bestBIndex, maxCorrelation := findBestSegmentAlignment(AQ, BQ, segmentLength)
+
+	fmt.Printf("Best A Index: %d, Best B Index: %d, Max Correlation: %f\n", bestAIndex, bestBIndex, maxCorrelation)
+	extractFrames("A.mp4", "tmp/ios/align_a.mp4", bestAIndex, bestAIndex+120)
+	extractFrames("B.mp4", "tmp/ios/align_b.mp4", bestBIndex, bestBIndex+120)
+}
+
+func testZeroFrameGradient() {
+	var blockAvgGradient [][]Histogram
+	readJson("tmp/ios/gpu_frame_quantity_4_0.json", &blockAvgGradient)
+	var frameHistogram []Histogram
+
+	var hgOneFrame Histogram
+	for rowIdx := 0; rowIdx < len(blockAvgGradient); rowIdx++ {
+		for colIdx := 0; colIdx < len(blockAvgGradient[rowIdx]); colIdx++ {
+			hgOneFrame.Add(blockAvgGradient[rowIdx][colIdx])
+		}
+	}
+	frameHistogram = append(frameHistogram, hgOneFrame)
+	saveJson("tmp/ios/cpu_gpu_frame_histogram.json", frameHistogram)
 }

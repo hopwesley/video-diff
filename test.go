@@ -130,7 +130,8 @@ func testRun(_ *cobra.Command, _ []string) {
 		IosQuantizeGradient()
 		return
 	case 18:
-		testCpuOrGpu()
+		testZeroFrameGradient()
+		//testCpuOrGpu()
 		//grayDataToImg("tmp/ios/gpu_grayBufferA.json")
 		//grayDataToImg("tmp/ios/gpu_grayBufferB.json")
 		//grayDataToImg("tmp/ios/gpu_gradientTBuffer.json")
