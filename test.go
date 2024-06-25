@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"time"
 )
 
 var testCmd = &cobra.Command{
@@ -152,8 +153,10 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 20:
 		S_0 := 32
+		now := time.Now().UnixMilli()
 		FrameQForTimeAlign(param.rawAFile, S_0)
 		FrameQForTimeAlign(param.rawBFile, S_0)
+		fmt.Println("时长：", time.Now().UnixMilli()-now)
 		return
 	case 21:
 		AlignFrame()
