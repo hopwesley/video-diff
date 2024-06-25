@@ -594,14 +594,15 @@ func testCpuOrGpu() {
 	var frameHistogram Histogram
 	for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
 		blockGradient[rowIdx] = make([][10]float64, numberOfX)
-		for colIdx := 0; colIdx < numberOfX; colIdx++ {
+		for colIdx := 0; colIdx < 4; colIdx++ {
 			hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, &gradX, &gradY, &gradT)
 			blockGradient[rowIdx][colIdx] = hg
 			frameHistogram.Add(hg)
 		}
+		break
 	}
-	saveJson("tmp/ios/cpu_gpu_block_gradient_32.json", blockGradient)
-	saveJson(fmt.Sprintf("tmp/ios/cpu_gpu_frame_histogram_32.json"), frameHistogram)
+	saveJson("tmp/ios/cpu_1_1.json", blockGradient)
+	saveJson(fmt.Sprintf("tmp/ios/cpu_1_2.json"), frameHistogram)
 
 	gradX.Close()
 	gradY.Close()
