@@ -208,6 +208,15 @@ func (h *Histogram) l2Norm() float64 {
 	return math.Sqrt(sum)
 }
 
+// 计算Histogram的L2范数
+func (h *Histogram) length() float64 {
+	var sum float64
+	for i := 0; i < 10; i++ {
+		sum += h[i] * h[i]
+	}
+	return sum
+}
+
 func AverageGradientOfBlock(S_0 int) {
 	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
 	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
@@ -588,49 +597,6 @@ func arrayToMat(array interface{}) (gocv.Mat, error) {
 	return mat, nil
 }
 
-// normalizedCrossCorrelation 函数
-func normalizedCrossCorrelation(AQ, BQ []Histogram) (int, float64) {
-	maxCorr := -1.0
-	bestOffset := 0
-
-	lenA := len(AQ)
-	lenB := len(BQ)
-
-	for offset := -lenB + 1; offset < lenA; offset++ {
-		sumDotProduct := 0.0
-		sumNormA := 0.0
-		sumNormB := 0.0
-		count := 0
-
-		for i := 0; i < lenA; i++ {
-			j := i - offset
-			if j >= 0 && j < lenB {
-				dotProduct := AQ[i].dotProduct(BQ[j])
-				normA := AQ[i].l2Norm()
-				normB := BQ[j].l2Norm()
-
-				sumDotProduct += dotProduct
-				sumNormA += normA * normA
-				sumNormB += normB * normB
-				count++
-			}
-		}
-
-		if count > 0 {
-			normFactor := math.Sqrt(sumNormA * sumNormB)
-			if normFactor > 0 {
-				corr := sumDotProduct / normFactor
-				if corr > maxCorr {
-					maxCorr = corr
-					bestOffset = offset
-				}
-			}
-		}
-	}
-
-	return bestOffset, maxCorr
-}
-
 func FrameQForTimeAlign(file string, S_0 int) []Histogram {
 	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
 	var frameHistogram []Histogram
@@ -668,15 +634,20 @@ func FrameQForTimeAlign(file string, S_0 int) []Histogram {
 func AlignFrame() {
 	var AQ []Histogram
 	var BQ []Histogram
-	readJson("tmp/ios/cpu_frame_q_A.mp4_32.json", &AQ)
-	readJson("tmp/ios/cpu_frame_q_B.mp4_32.json", &BQ)
-	segmentLength := 20
+	readJson("tmp/ios/cpu_frame_histogram_A.mp4_32.json", &AQ)
+	readJson("tmp/ios/cpu_frame_histogram_B.mp4_32.json", &BQ)
+	//segmentLength := 20
 	//bestOffset, maxCorrelation := normalizedCrossCorrelation(AQ, BQ, maxOffset)
-	bestAIndex, bestBIndex, maxCorrelation := findBestSegmentAlignment(AQ, BQ, segmentLength)
+	//bestAIndex, bestBIndex, maxCorrelation := findBestSegmentAlignment(AQ, BQ, segmentLength)
+	//bestOffsetA, bestOffsetB, maxCorr := normalizedCrossCorrelationWithWindow(AQ, BQ, 20)
+	//
+	//fmt.Printf("Best A Index: %d,Best B Index: %d, Max Correlation: %f\n", bestOffsetA, bestOffsetB, maxCorr)
+	//extractFrames("A.mp4", "tmp/ios/align_a.mp4", bestOffsetA, bestOffsetA+20)
+	//extractFrames("B.mp4", "tmp/ios/align_b.mp4", bestOffsetB, bestOffsetB+20)
 
-	fmt.Printf("Best A Index: %d, Best B Index: %d, Max Correlation: %f\n", bestAIndex, bestBIndex, maxCorrelation)
-	extractFrames("A.mp4", "tmp/ios/align_a.mp4", bestAIndex, bestAIndex+120)
-	extractFrames("B.mp4", "tmp/ios/align_b.mp4", bestBIndex, bestBIndex+120)
+	path, maxCorr := DTW(AQ, BQ)
+	fmt.Printf("Best A Index: %v, Max Correlation: %f\n", path, maxCorr)
+	cipherFrame2("A.mp4", "B.mp4", "tmp/ios/", path)
 }
 
 func testZeroFrameGradient() {
@@ -692,4 +663,259 @@ func testZeroFrameGradient() {
 	}
 	frameHistogram = append(frameHistogram, hgOneFrame)
 	saveJson("tmp/ios/cpu_gpu_frame_histogram.json", frameHistogram)
+}
+
+// DTW算法
+func DTW(AQ, BQ []Histogram) ([][]int, float64) {
+	n := len(AQ)
+	m := len(BQ)
+	dtw := make([][]float64, n+1)
+	for i := range dtw {
+		dtw[i] = make([]float64, m+1)
+		for j := range dtw[i] {
+			dtw[i][j] = math.Inf(1)
+		}
+	}
+	dtw[0][0] = 0
+
+	for i := 1; i <= n; i++ {
+		for j := 1; j <= m; j++ {
+			cost := AQ[i-1].dotProduct(BQ[j-1])
+			dtw[i][j] = cost + math.Min(dtw[i-1][j], math.Min(dtw[i][j-1], dtw[i-1][j-1]))
+		}
+	}
+
+	path := [][]int{}
+	i, j := n, m
+	for i > 0 && j > 0 {
+		path = append([][]int{{i - 1, j - 1}}, path...)
+		if dtw[i-1][j] < dtw[i][j-1] && dtw[i-1][j] < dtw[i-1][j-1] {
+			i--
+		} else if dtw[i][j-1] < dtw[i-1][j] && dtw[i][j-1] < dtw[i-1][j-1] {
+			j--
+		} else {
+			i--
+			j--
+		}
+	}
+
+	return path, dtw[n][m]
+}
+
+// normalizedCrossCorrelation 函数
+func normalizedCrossCorrelation(AQ, BQ []Histogram) (int, float64) {
+	maxCorr := -1.0
+	bestOffset := 0
+
+	lenA := len(AQ)
+	lenB := len(BQ)
+
+	for offset := -lenB + 1; offset < lenA; offset++ {
+		sumDotProduct := 0.0
+		sumNormA := 0.0
+		sumNormB := 0.0
+		count := 0
+
+		for i := 0; i < lenA; i++ {
+			j := i - offset
+			if j >= 0 && j < lenB {
+				dotProduct := AQ[i].dotProduct(BQ[j])
+				normA := AQ[i].length()
+				normB := BQ[j].length()
+
+				sumDotProduct += dotProduct
+				sumNormA += normA
+				sumNormB += normB
+				count++
+			}
+		}
+
+		if count > 0 {
+			normFactor := math.Sqrt(sumNormA * sumNormB)
+			if normFactor > 0 {
+				corr := sumDotProduct / normFactor
+				if corr > maxCorr {
+					maxCorr = corr
+					bestOffset = offset
+				}
+			}
+		}
+	}
+
+	return bestOffset, maxCorr
+}
+
+func normalizedCrossCorrelationWithWindow(AQ, BQ []Histogram, windowSize int) (int, int, float64) {
+	maxCorr := -1.0
+	offsetA := 0
+	offsetB := 0
+
+	for i := 0; i <= len(AQ)-windowSize; i++ {
+		for j := 0; j <= len(BQ)-windowSize; j++ {
+			var sumA, sumB, sumAB, sumAA, sumBB float64
+
+			for k := 0; k < windowSize; k++ {
+				sumA += AQ[i+k].l2Norm()
+				sumB += BQ[j+k].l2Norm()
+				sumAB += AQ[i+k].dotProduct(BQ[j+k])
+				sumAA += AQ[i+k].dotProduct(AQ[i+k])
+				sumBB += BQ[j+k].dotProduct(BQ[j+k])
+			}
+
+			denominator := math.Sqrt(sumAA * sumBB)
+			if denominator == 0 {
+				continue
+			}
+			corr := sumAB / denominator
+
+			if corr > maxCorr {
+				maxCorr = corr
+				offsetA = i
+				offsetB = j
+			}
+		}
+	}
+
+	return offsetA, offsetB, maxCorr
+}
+func cipherFrame(fileA, fileB, targetDir string, path [][]int) {
+	capA, err := gocv.VideoCaptureFile(fileA)
+	if err != nil {
+		fmt.Println("Error opening video file: ", fileA)
+		return
+	}
+	defer capA.Close()
+
+	capB, err := gocv.VideoCaptureFile(fileB)
+	if err != nil {
+		fmt.Println("Error opening video file:", fileB)
+		return
+	}
+	defer capB.Close()
+
+	// 获取视频属性
+	width := int(capA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(capA.Get(gocv.VideoCaptureFrameHeight))
+	fps := capA.Get(gocv.VideoCaptureFPS)
+
+	// 创建视频写入器
+	writerA, err := gocv.VideoWriterFile(targetDir+fileA+"_align.mp4", "mp4v", fps, width, height, true)
+	if err != nil {
+		fmt.Println("Error opening video writer: A_align.mp4")
+		return
+	}
+	defer writerA.Close()
+
+	writerB, err := gocv.VideoWriterFile(targetDir+fileB+"_align.mp4", "mp4v", fps, width, height, true)
+	if err != nil {
+		fmt.Println("Error opening video writer: B_align.mp4")
+		return
+	}
+	defer writerB.Close()
+
+	// 读取视频帧并存储在切片中
+	var framesA []gocv.Mat
+	for {
+		frame := gocv.NewMat()
+		if !capA.Read(&frame) {
+			break
+		}
+		framesA = append(framesA, frame)
+	}
+	var framesB []gocv.Mat
+	for {
+		frame := gocv.NewMat()
+		if !capB.Read(&frame) {
+			break
+		}
+		framesB = append(framesB, frame)
+	}
+
+	// 根据 DTW 路径同步视频帧
+	for _, p := range path {
+		frameA := framesA[p[0]]
+		frameB := framesB[p[1]]
+		writerA.Write(frameA)
+		writerB.Write(frameB)
+	}
+
+	fmt.Println("Video alignment completed.")
+}
+func interpolateFrames(frame1, frame2 gocv.Mat, alpha float64) gocv.Mat {
+	result := gocv.NewMat()
+	gocv.AddWeighted(frame1, alpha, frame2, 1-alpha, 0, &result)
+	return result
+}
+
+func cipherFrame2(fileA, fileB, targetDir string, path [][]int) {
+	capA, err := gocv.VideoCaptureFile(fileA)
+	if err != nil {
+		fmt.Println("Error opening video file: ", fileA)
+		return
+	}
+	defer capA.Close()
+
+	capB, err := gocv.VideoCaptureFile(fileB)
+	if err != nil {
+		fmt.Println("Error opening video file:", fileB)
+		return
+	}
+	defer capB.Close()
+
+	// 获取视频属性
+	width := int(capA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(capA.Get(gocv.VideoCaptureFrameHeight))
+	fps := capA.Get(gocv.VideoCaptureFPS)
+
+	// 创建视频写入器
+	writerA, err := gocv.VideoWriterFile(targetDir+fileA+"_align.mp4", "mp4v", fps, width, height, true)
+	if err != nil {
+		fmt.Println("Error opening video writer: A_align.mp4")
+		return
+	}
+	defer writerA.Close()
+
+	writerB, err := gocv.VideoWriterFile(targetDir+fileB+"_align.mp4", "mp4v", fps, width, height, true)
+	if err != nil {
+		fmt.Println("Error opening video writer: B_align.mp4")
+		return
+	}
+	defer writerB.Close()
+
+	// 读取视频帧并存储在切片中
+	var framesA []gocv.Mat
+	for {
+		frame := gocv.NewMat()
+		if !capA.Read(&frame) {
+			break
+		}
+		framesA = append(framesA, frame)
+	}
+	var framesB []gocv.Mat
+	for {
+		frame := gocv.NewMat()
+		if !capB.Read(&frame) {
+			break
+		}
+		framesB = append(framesB, frame)
+	}
+
+	// 根据 DTW 路径同步视频帧
+	var prevA, prevB gocv.Mat
+	for k, p := range path {
+		frameA := framesA[p[0]]
+		frameB := framesB[p[1]]
+		if k > 0 && p[0] == path[k-1][0] {
+			// A视频帧重复，插值生成新帧
+			frameA = interpolateFrames(prevA, frameA, 0.5)
+		}
+		if k > 0 && p[1] == path[k-1][1] {
+			// B视频帧重复，插值生成新帧
+			frameB = interpolateFrames(prevB, frameB, 0.5)
+		}
+		writerA.Write(frameA)
+		writerB.Write(frameB)
+		prevA, prevB = frameA, frameB
+	}
+	fmt.Println("Video alignment completed.")
 }
