@@ -184,16 +184,18 @@ func IosQuantizeGradient() {
 	})
 }
 
-type Histogram [10]float64
+const HistogramSize = 10
+
+type Histogram [HistogramSize]float64
 
 func (h *Histogram) Add(hg Histogram) {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < HistogramSize; i++ {
 		h[i] += hg[i]
 	}
 }
 func (h *Histogram) dotProduct(h2 Histogram) float64 {
 	var sum float64
-	for i := 0; i < 10; i++ {
+	for i := 0; i < HistogramSize; i++ {
 		sum += h[i] * h2[i]
 	}
 	return sum
@@ -202,7 +204,7 @@ func (h *Histogram) dotProduct(h2 Histogram) float64 {
 // 计算Histogram的L2范数
 func (h *Histogram) l2Norm() float64 {
 	var sum float64
-	for i := 0; i < 10; i++ {
+	for i := 0; i < HistogramSize; i++ {
 		sum += h[i] * h[i]
 	}
 	return math.Sqrt(sum)
@@ -211,10 +213,22 @@ func (h *Histogram) l2Norm() float64 {
 // 计算Histogram的L2范数
 func (h *Histogram) length() float64 {
 	var sum float64
-	for i := 0; i < 10; i++ {
+	for i := 0; i < HistogramSize; i++ {
 		sum += h[i] * h[i]
 	}
 	return sum
+}
+
+func (h *Histogram) mean() float64 {
+	sum := 0.0
+	for _, value := range h {
+		sum += value
+	}
+	return sum / float64(HistogramSize)
+}
+
+func calculateDistance(h1, h2 Histogram) float64 {
+	return h1.dotProduct(h2) / (h1.l2Norm() * h2.l2Norm())
 }
 
 func AverageGradientOfBlock(S_0 int) {
@@ -631,23 +645,180 @@ func FrameQForTimeAlign(file string, S_0 int) []Histogram {
 	return frameHistogram
 }
 
-func AlignFrame() {
+func calculateNCCByHistogram(histogramA, histogramB Histogram) float64 {
+	meanA := histogramA.mean() //calculateMean(histogramA)
+	meanB := histogramB.mean()
+
+	numerator := 0.0
+	denominatorA := 0.0
+	denominatorB := 0.0
+
+	for i := 0; i < len(histogramA); i++ {
+		numerator += (histogramA[i] - meanA) * (histogramB[i] - meanB)
+		denominatorA += (histogramA[i] - meanA) * (histogramA[i] - meanA)
+		denominatorB += (histogramB[i] - meanB) * (histogramB[i] - meanB)
+	}
+
+	return numerator / (math.Sqrt(denominatorA) * math.Sqrt(denominatorB))
+}
+
+const MiniNccVal = 0.95
+
+func nccOfAllFrameByHistogram(aHisGramFloat, bHisGramFloat []Histogram) [][]float64 {
+
+	videoALength := len(aHisGramFloat) // Video A frame count
+	videoBLength := len(bHisGramFloat) // Video B frame count
+
+	// Initialize a 2D array to store the NCC values
+	nccValues := make([][]float64, videoALength)
+	// Iterate over all frame pairs of Video A and Video B, calculate their NCC values
+	for i, histogramA := range aHisGramFloat {
+		nccValues[i] = make([]float64, videoBLength)
+		for j, histogramB := range bHisGramFloat {
+			var ncc = calculateNCCByHistogram(histogramA, histogramB)
+			if MiniNccVal < ncc {
+				nccValues[i][j] = ncc
+			} else {
+				nccValues[i][j] = 0.0
+			}
+			//nccValues[i][j] = calculateNCCByHistogram(histogramA, histogramB)
+		}
+	}
+	return nccValues // These are the indices of the frames that best align in time
+}
+
+func alignTestA() {
+	var AQ []Histogram
+	var BQ []Histogram
+	readJson("tmp/ios/cpu_frame_histogram_A_2.mp4_32.json", &AQ)
+	readJson("tmp/ios/cpu_frame_histogram_B_2.mp4_32.json", &BQ)
+
+	ncc := nccOfAllFrameByHistogram(AQ, BQ)
+
+	saveJson("tmp/ios/ncc_a2_b2.json", ncc)
+	//var Len = testTool.window
+
+	//fmt.Println(findMinMaxCoordinates(ncc))
+	gap, err := findMinMaxCoordinates(ncc)
+	if err != nil {
+		panic(err)
+	}
+
+	startA, startB := findMaxNCCSequence(ncc, gap)
+	fmt.Printf("a=%d,b=%d gap=%d\n", startA, startB, gap)
+
+	extractFrames("A_2.mp4", "tmp/ios/align_a_2.mp4", startA, startA+gap)
+	extractFrames("B_2.mp4", "tmp/ios/align_b_2.mp4", startB, startB+gap)
+	//fmt.Println(findAlignmentPath(AQ, BQ, Len))
+	//path := findAlignmentPath(AQ, BQ, Len)
+	//cipherFrame("A_2.mp4", "B_2.mp4", "tmp/ios/", path)
+}
+
+func findMinMaxCoordinates(nccValues [][]float64) (gap int, err error) {
+	minX, minY := math.MaxInt32, math.MaxInt32
+	maxX, maxY := math.MinInt32, math.MinInt32
+	found := false
+
+	for i := 0; i < len(nccValues); i++ {
+		for j := 0; j < len(nccValues[0]); j++ {
+			if nccValues[i][j] != 0 {
+				if i < minX {
+					minX = i
+				}
+				if j < minY {
+					minY = j
+				}
+				if i > maxX {
+					maxX = i
+				}
+				if j > maxY {
+					maxY = j
+				}
+				found = true
+			}
+		}
+	}
+
+	if !found {
+		return -1, fmt.Errorf("no non-zero elements found")
+	}
+	return min(maxX-minX, maxY-minY), nil
+}
+func alignTestB() {
 	var AQ []Histogram
 	var BQ []Histogram
 	readJson("tmp/ios/cpu_frame_histogram_A.mp4_32.json", &AQ)
 	readJson("tmp/ios/cpu_frame_histogram_B.mp4_32.json", &BQ)
+
+	ncc := nccOfAllFrameByHistogram(AQ, BQ)
+	saveJson("tmp/ios/ncc_a_b.json", ncc)
+	//var Len = testTool.window
+
+	//fmt.Printf("a=%d,b=%d\n", startA, startB)
+	gap, err := findMinMaxCoordinates(ncc)
+	if err != nil {
+		panic(err)
+	}
+
+	startA, startB := findMaxNCCSequence(ncc, gap)
+	fmt.Println("step1:", startA, startB, gap)
+	extractFrames("A.mp4", "tmp/ios/align_a.mp4", startA, gap+startA)
+	extractFrames("B.mp4", "tmp/ios/align_b.mp4", startB, gap+startB)
+	//fmt.Println(findAlignmentPath(AQ, BQ, Len))
+	//path := findAlignmentPath(AQ, BQ, Len)
+	//cipherFrame("A.mp4", "B.mp4", "tmp/ios/", path)
+}
+
+func alignTestC() {
+	var AQ []Histogram
+	var BQ []Histogram
+	err1, err2 := readJson("tmp/ios/gpu_frame_histogram_A.json", &AQ), readJson("tmp/ios/gpu_frame_histogram_B.json", &BQ)
+	if err1 != nil || err2 != nil {
+		fmt.Println(err1, err2)
+		return
+	}
+	ncc := nccOfAllFrameByHistogram(AQ, BQ)
+	saveJson("tmp/ios/gpu_ncc_a_b.json", ncc)
+	var Len = testTool.window
+	startA, startB := findMaxNCCSequence(ncc, Len)
+
+	fmt.Printf("a=%d,b=%d\n", startA, startB)
+	extractFrames("A.mp4", "tmp/ios/gpu_align_a.mp4", startA, startA+Len)
+	extractFrames("B.mp4", "tmp/ios/gpu_align_b.mp4", startB, startB+Len)
+}
+func AlignFrame() {
+	alignTestA()
+	alignTestB()
+	//alignTestC()
+	//av, _ := gocv.VideoCaptureFile("A_2.mp4")
+	//bv, _ := gocv.VideoCaptureFile("B_2.mp4")
+	//saveVideoFromFrame(av, startA, "tmp/ios/align_a.mp4")
+	//saveVideoFromFrame(bv, startB, "tmp/ios/align_b.mp4")
+
+	//var AQ []Histogram
+	//var BQ []Histogram
+	//readJson("tmp/ios/cpu_frame_histogram_A.mp4_32.json", &AQ)
+	//readJson("tmp/ios/cpu_frame_histogram_B.mp4_32.json", &BQ)
+
+	//readJson("tmp/ios/cpu_frame_histogram_A_2.mp4_32.json", &AQ)
+	//readJson("tmp/ios/cpu_frame_histogram_B_2.mp4_32.json", &BQ)
 	//segmentLength := 20
 	//bestOffset, maxCorrelation := normalizedCrossCorrelation(AQ, BQ, maxOffset)
 	//bestAIndex, bestBIndex, maxCorrelation := findBestSegmentAlignment(AQ, BQ, segmentLength)
-	//bestOffsetA, bestOffsetB, maxCorr := normalizedCrossCorrelationWithWindow(AQ, BQ, 20)
+	//var vLen = 200
+	//bestOffsetA, bestOffsetB, maxCorr := normalizedCrossCorrelationWithWindow(AQ, BQ, vLen)
+	//bestOffsetA, maxCorr := normalizedCrossCorrelation(AQ, BQ)
+
 	//
 	//fmt.Printf("Best A Index: %d,Best B Index: %d, Max Correlation: %f\n", bestOffsetA, bestOffsetB, maxCorr)
-	//extractFrames("A.mp4", "tmp/ios/align_a.mp4", bestOffsetA, bestOffsetA+20)
-	//extractFrames("B.mp4", "tmp/ios/align_b.mp4", bestOffsetB, bestOffsetB+20)
+	//extractFrames("A_2.mp4", "tmp/ios/align_a.mp4", bestOffsetA, bestOffsetA+vLen)
+	//extractFrames("B_2.mp4", "tmp/ios/align_b.mp4", bestOffsetB, bestOffsetB+vLen)
 
-	path, maxCorr := DTW(AQ, BQ)
-	fmt.Printf("Best A Index: %v, Max Correlation: %f\n", path, maxCorr)
-	cipherFrame2("A.mp4", "B.mp4", "tmp/ios/", path)
+	//path, maxCorr := DTW(AQ, BQ)
+	//fmt.Printf("Best A Index: %v, Max Correlation: %f\n", path, maxCorr)
+	//cipherFrame("A.mp4", "B.mp4", "tmp/ios/", path)
+	//cipherFrame("A.mp4", "B.mp4", "tmp/ios/", path)
+	//_ = AlignVideos("A_2.mp4", "B_2.mp4", path, "tmp/ios/a_align.mp4", "tmp/ios/b_align.mp4")
 }
 
 func testZeroFrameGradient() {
@@ -664,8 +835,58 @@ func testZeroFrameGradient() {
 	frameHistogram = append(frameHistogram, hgOneFrame)
 	saveJson("tmp/ios/cpu_gpu_frame_histogram.json", frameHistogram)
 }
+func localDTW(a, b []Histogram, window int) float64 {
+	n, m := len(a), len(b)
+	dtw := make([][]float64, n+1)
+	for i := range dtw {
+		dtw[i] = make([]float64, m+1)
+		for j := range dtw[i] {
+			dtw[i][j] = math.Inf(1)
+		}
+	}
+	dtw[0][0] = 0
+	for i := 1; i <= n; i++ {
+		for j := max(1, i-window); j <= min(m, i+window); j++ {
+			cost := calculateDistance(a[i-1], b[j-1])
+			dtw[i][j] = cost + math.Min(dtw[i-1][j], math.Min(dtw[i][j-1], dtw[i-1][j-1]))
+		}
+	}
+	return dtw[n][m]
+}
+func findAlignmentPath(a, b []Histogram, window int) [][]int {
+	n, m := len(a), len(b)
+	dtw := make([][]float64, n+1)
+	for i := range dtw {
+		dtw[i] = make([]float64, m+1)
+		for j := range dtw[i] {
+			dtw[i][j] = math.Inf(1)
+		}
+	}
+	dtw[0][0] = 0
 
-// DTW算法
+	for i := 1; i <= n; i++ {
+		for j := max(1, i-window); j <= min(m, i+window); j++ {
+			cost := calculateDistance(a[i-1], b[j-1])
+			dtw[i][j] = cost + math.Min(dtw[i-1][j], math.Min(dtw[i][j-1], dtw[i-1][j-1]))
+		}
+	}
+
+	path := [][]int{}
+	i, j := n, m
+	for i > 0 && j > 0 {
+		path = append([][]int{{i - 1, j - 1}}, path...)
+		if dtw[i-1][j] < dtw[i][j-1] && dtw[i-1][j] < dtw[i-1][j-1] {
+			i--
+		} else if dtw[i][j-1] < dtw[i-1][j] && dtw[i][j-1] < dtw[i-1][j-1] {
+			j--
+		} else {
+			i--
+			j--
+		}
+	}
+	return path
+}
+
 func DTW(AQ, BQ []Histogram) ([][]int, float64) {
 	n := len(AQ)
 	m := len(BQ)
@@ -701,83 +922,49 @@ func DTW(AQ, BQ []Histogram) ([][]int, float64) {
 
 	return path, dtw[n][m]
 }
+func AlignVideos(videoAPath, videoBPath string, path [][]int, outputAPath, outputBPath string) error {
+	capA, err := gocv.VideoCaptureFile(videoAPath)
+	if err != nil {
+		return fmt.Errorf("error opening video A: %v", err)
+	}
+	defer capA.Close()
 
-// normalizedCrossCorrelation 函数
-func normalizedCrossCorrelation(AQ, BQ []Histogram) (int, float64) {
-	maxCorr := -1.0
-	bestOffset := 0
+	capB, err := gocv.VideoCaptureFile(videoBPath)
+	if err != nil {
+		return fmt.Errorf("error opening video B: %v", err)
+	}
+	defer capB.Close()
 
-	lenA := len(AQ)
-	lenB := len(BQ)
+	writerA, err := gocv.VideoWriterFile(outputAPath, "mp4v", capA.Get(gocv.VideoCaptureFPS), int(capA.Get(gocv.VideoCaptureFrameWidth)), int(capA.Get(gocv.VideoCaptureFrameHeight)), true)
+	if err != nil {
+		return fmt.Errorf("error opening video writer A: %v", err)
+	}
+	defer writerA.Close()
 
-	for offset := -lenB + 1; offset < lenA; offset++ {
-		sumDotProduct := 0.0
-		sumNormA := 0.0
-		sumNormB := 0.0
-		count := 0
+	writerB, err := gocv.VideoWriterFile(outputBPath, "mp4v", capB.Get(gocv.VideoCaptureFPS), int(capB.Get(gocv.VideoCaptureFrameWidth)), int(capB.Get(gocv.VideoCaptureFrameHeight)), true)
+	if err != nil {
+		return fmt.Errorf("error opening video writer B: %v", err)
+	}
+	defer writerB.Close()
 
-		for i := 0; i < lenA; i++ {
-			j := i - offset
-			if j >= 0 && j < lenB {
-				dotProduct := AQ[i].dotProduct(BQ[j])
-				normA := AQ[i].length()
-				normB := BQ[j].length()
+	for _, idx := range path {
+		frameA := gocv.NewMat()
+		frameB := gocv.NewMat()
 
-				sumDotProduct += dotProduct
-				sumNormA += normA
-				sumNormB += normB
-				count++
-			}
+		capA.Set(gocv.VideoCapturePosFrames, float64(idx[0]))
+		if ok := capA.Read(&frameA); ok {
+			writerA.Write(frameA)
 		}
 
-		if count > 0 {
-			normFactor := math.Sqrt(sumNormA * sumNormB)
-			if normFactor > 0 {
-				corr := sumDotProduct / normFactor
-				if corr > maxCorr {
-					maxCorr = corr
-					bestOffset = offset
-				}
-			}
+		capB.Set(gocv.VideoCapturePosFrames, float64(idx[1]))
+		if ok := capB.Read(&frameB); ok {
+			writerB.Write(frameB)
 		}
 	}
 
-	return bestOffset, maxCorr
+	return nil
 }
 
-func normalizedCrossCorrelationWithWindow(AQ, BQ []Histogram, windowSize int) (int, int, float64) {
-	maxCorr := -1.0
-	offsetA := 0
-	offsetB := 0
-
-	for i := 0; i <= len(AQ)-windowSize; i++ {
-		for j := 0; j <= len(BQ)-windowSize; j++ {
-			var sumA, sumB, sumAB, sumAA, sumBB float64
-
-			for k := 0; k < windowSize; k++ {
-				sumA += AQ[i+k].l2Norm()
-				sumB += BQ[j+k].l2Norm()
-				sumAB += AQ[i+k].dotProduct(BQ[j+k])
-				sumAA += AQ[i+k].dotProduct(AQ[i+k])
-				sumBB += BQ[j+k].dotProduct(BQ[j+k])
-			}
-
-			denominator := math.Sqrt(sumAA * sumBB)
-			if denominator == 0 {
-				continue
-			}
-			corr := sumAB / denominator
-
-			if corr > maxCorr {
-				maxCorr = corr
-				offsetA = i
-				offsetB = j
-			}
-		}
-	}
-
-	return offsetA, offsetB, maxCorr
-}
 func cipherFrame(fileA, fileB, targetDir string, path [][]int) {
 	capA, err := gocv.VideoCaptureFile(fileA)
 	if err != nil {
@@ -799,14 +986,14 @@ func cipherFrame(fileA, fileB, targetDir string, path [][]int) {
 	fps := capA.Get(gocv.VideoCaptureFPS)
 
 	// 创建视频写入器
-	writerA, err := gocv.VideoWriterFile(targetDir+fileA+"_align.mp4", "mp4v", fps, width, height, true)
+	writerA, err := gocv.VideoWriterFile(targetDir+fileA+"_dwt_align.mp4", "mp4v", fps, width, height, true)
 	if err != nil {
 		fmt.Println("Error opening video writer: A_align.mp4")
 		return
 	}
 	defer writerA.Close()
 
-	writerB, err := gocv.VideoWriterFile(targetDir+fileB+"_align.mp4", "mp4v", fps, width, height, true)
+	writerB, err := gocv.VideoWriterFile(targetDir+fileB+"_dwt_align.mp4", "mp4v", fps, width, height, true)
 	if err != nil {
 		fmt.Println("Error opening video writer: B_align.mp4")
 		return

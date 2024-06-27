@@ -49,7 +49,7 @@ func init() {
 	flags.IntVarP(&testTool.height, "height",
 		"y", 128, "golf test -y 1280")
 	flags.IntVarP(&testTool.window, "window",
-		"w", 3, "golf test -w 3")
+		"w", 30, "golf test -w 3")
 
 	flags.StringVarP(&param.rawAFile, "source",
 		"a", "A.mp4", "golf -a A.mp4")
