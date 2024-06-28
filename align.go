@@ -96,7 +96,7 @@ func alignRun(_ *cobra.Command, _ []string) {
 	bHisGram, _ := parseHistogram2(videoB)
 	ncc := nccOfAllFrame(aHisGram, bHisGram)
 
-	startA, startB := findMaxNCCSequence(ncc, testTool.window)
+	startA, startB, _ := findMaxNCCSequence(ncc, testTool.window)
 	saveVideoFromFrame(videoA, startA, "align_"+param.rawAFile)
 	saveVideoFromFrame(videoB, startB, "align_"+param.rawBFile)
 }
@@ -163,24 +163,28 @@ func nccOfAllFrame(aHisGramFloat, bHisGramFloat [][]float64) [][]float64 {
 	return nccValues // These are the indices of the frames that best align in time
 }
 
-func findMaxNCCSequence(nccValues [][]float64, sequenceLength int) (int, int) {
+func findMaxNCCSequence(nccValues [][]float64, sequenceLength int) (int, int, [][]float64) {
 	maxSum := -1.0       // 假设NCC值范围是-1到1，开始时设置为最小可能的和
 	maxI, maxJ := -1, -1 // 用于存储最大和对应的起始帧索引
-
-	for i := 0; i <= len(nccValues)-sequenceLength; i++ {
-		for j := 0; j <= len(nccValues[0])-sequenceLength; j++ {
+	newRow := len(nccValues) - sequenceLength
+	newCol := len(nccValues[0]) - sequenceLength
+	fmt.Println("new row and col:", newRow, newCol)
+	weightedSum := make([][]float64, newRow+1)
+	for i := 0; i <= newRow; i++ {
+		weightedSum[i] = make([]float64, newCol+1)
+		for j := 0; j <= newCol; j++ {
 			sum := 0.0
 			for k := 0; k < sequenceLength; k++ {
 				sum += nccValues[i+k][j+k] // 计算连续sequenceLength帧的NCC值之和
 			}
-
+			weightedSum[i][j] = sum
 			if sum > maxSum {
 				maxSum = sum
 				maxI, maxJ = i, j
 			}
 		}
 	}
-	return maxI, maxJ // 返回连续sequenceLength帧NCC值之和最大的起始帧索引
+	return maxI, maxJ, weightedSum // 返回连续sequenceLength帧NCC值之和最大的起始帧索引
 }
 
 func computeFrameVector(quantizedGradients [][][]float64) []float64 {

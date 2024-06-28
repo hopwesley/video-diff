@@ -218,7 +218,7 @@ func AlignVideo() {
 	_ = readJson("b_histogram.txt", &bHisGram)
 	ncc := nccOfAllFrame(aHisGram, bHisGram)
 	saveJson("ncc.txt", ncc)
-	startA, startB := findMaxNCCSequence(ncc, testTool.window)
+	startA, startB, _ := findMaxNCCSequence(ncc, testTool.window)
 	videoA, videoB, _ := readFile(param.rawAFile, param.rawBFile)
 	saveVideoFromFrame(videoA, startA, "align_"+param.rawAFile)
 	saveVideoFromFrame(videoB, startB, "align_"+param.rawBFile)

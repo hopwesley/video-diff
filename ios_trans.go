@@ -662,7 +662,7 @@ func calculateNCCByHistogram(histogramA, histogramB Histogram) float64 {
 	return numerator / (math.Sqrt(denominatorA) * math.Sqrt(denominatorB))
 }
 
-const MiniNccVal = 0.95
+const MiniNccVal = 0.9
 
 func nccOfAllFrameByHistogram(aHisGramFloat, bHisGramFloat []Histogram) [][]float64 {
 
@@ -704,7 +704,7 @@ func alignTestA() {
 		panic(err)
 	}
 
-	startA, startB := findMaxNCCSequence(ncc, gap)
+	startA, startB, _ := findMaxNCCSequence(ncc, gap)
 	fmt.Printf("a=%d,b=%d gap=%d\n", startA, startB, gap)
 
 	extractFrames("A_2.mp4", "tmp/ios/align_a_2.mp4", startA, startA+gap)
@@ -760,7 +760,7 @@ func alignTestB() {
 		panic(err)
 	}
 
-	startA, startB := findMaxNCCSequence(ncc, gap)
+	startA, startB, _ := findMaxNCCSequence(ncc, gap)
 	fmt.Println("step1:", startA, startB, gap)
 	extractFrames("A.mp4", "tmp/ios/align_a.mp4", startA, gap+startA)
 	extractFrames("B.mp4", "tmp/ios/align_b.mp4", startB, gap+startB)
@@ -769,6 +769,25 @@ func alignTestB() {
 	//cipherFrame("A.mp4", "B.mp4", "tmp/ios/", path)
 }
 
+func findMaxValueAndCoordinates(matrix [][]float64) (maxValue float64, maxX int, maxY int) {
+
+	// 初始化最大值为负无穷，最大值坐标为-1
+	maxValue = -math.MaxFloat64
+	maxX, maxY = -1, -1
+
+	// 遍历矩阵，寻找最大值及其坐标
+	for i := 0; i < len(matrix); i++ {
+		for j := 0; j < len(matrix[0]); j++ {
+			if matrix[i][j] > maxValue {
+				maxValue = matrix[i][j]
+				maxX = i
+				maxY = j
+			}
+		}
+	}
+
+	return maxValue, maxX, maxY
+}
 func alignTestC() {
 	var AQ []Histogram
 	var BQ []Histogram
@@ -778,18 +797,57 @@ func alignTestC() {
 		return
 	}
 	ncc := nccOfAllFrameByHistogram(AQ, BQ)
-	saveJson("tmp/ios/gpu_ncc_a_b.json", ncc)
+	saveJson("tmp/ios/cpu_gpu_ncc_a_b.json", ncc)
 	var Len = testTool.window
-	startA, startB := findMaxNCCSequence(ncc, Len)
+	startA, startB, ws := findMaxNCCSequence(ncc, Len)
+	fmt.Printf("normal a=%d,b=%d\n", startA, startB)
+	fmt.Println(Len, "------>")
+	fmt.Println(findMaxValueAndCoordinates(ws))
+	fmt.Println("<------")
+	fmt.Printf("summed a=%d,b=%d\n", startA, startB)
+	extractFrames("A_2.mp4", "tmp/ios/gpu_align_a.mp4", startA, startA+Len)
+	extractFrames("B_2.mp4", "tmp/ios/gpu_align_b.mp4", startB, startB+Len)
+	saveJson("tmp/ios/cpu_gpu_ncc_weighted_sum.json", ws)
 
-	fmt.Printf("a=%d,b=%d\n", startA, startB)
-	extractFrames("A.mp4", "tmp/ios/gpu_align_a.mp4", startA, startA+Len)
-	extractFrames("B.mp4", "tmp/ios/gpu_align_b.mp4", startB, startB+Len)
+	var gpuNcc [][]float64
+	readJson("tmp/ios/gpu_ncc_weighted_sum.json", &gpuNcc)
+	_, startA, startB = findMaxValueAndCoordinates(gpuNcc)
+	fmt.Printf("gpu new a=%d,b=%d\n", startA, startB)
+	extractFrames("A_2.mp4", "tmp/ios/gpu_align_a_gpu.mp4", startA, startA+Len)
+	extractFrames("B_2.mp4", "tmp/ios/gpu_align_b_gpu.mp4", startB, startB+Len)
 }
+
+func alignTestD() {
+	var ncc [][]float64
+	readJson("tmp/ios/gpu_ncc_a_b.json", &ncc)
+	var Len = testTool.window
+	startA, startB, ws := findMaxNCCSequence(ncc, Len)
+	fmt.Printf("normal a=%d,b=%d\n", startA, startB)
+	fmt.Println("------>")
+	fmt.Println(findMaxValueAndCoordinates(ws))
+	fmt.Println("<------")
+	fmt.Printf("summed a=%d,b=%d\n", startA, startB)
+	extractFrames("A_2.mp4", "tmp/ios/gpu_align_a.mp4", startA, startA+Len)
+	extractFrames("B_2.mp4", "tmp/ios/gpu_align_b.mp4", startB, startB+Len)
+	saveJson("tmp/ios/cpu_gpu_ncc_weighted_sum.json", ws)
+}
+
+func alignTestE() {
+	var ws [][]float64
+	var Len = testTool.window
+	readJson("tmp/ios/gpu_ncc_weighted_sum.json", &ws)
+	val, startA, startB := findMaxValueAndCoordinates(ws)
+	fmt.Printf("summed val=%.5f a=%d,b=%d\n", val, startA, startB)
+	extractFrames("A_2.mp4", "tmp/ios/gpu_align_a.mp4", startA, startA+Len)
+	extractFrames("B_2.mp4", "tmp/ios/gpu_align_b.mp4", startB, startB+Len)
+}
+
 func AlignFrame() {
-	alignTestA()
-	alignTestB()
+	//alignTestA()
+	//alignTestB()
 	//alignTestC()
+	//alignTestD()
+	alignTestE()
 	//av, _ := gocv.VideoCaptureFile("A_2.mp4")
 	//bv, _ := gocv.VideoCaptureFile("B_2.mp4")
 	//saveVideoFromFrame(av, startA, "tmp/ios/align_a.mp4")
