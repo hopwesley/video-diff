@@ -1145,18 +1145,16 @@ func cipherFrame2(fileA, fileB, targetDir string, path [][]int) {
 }
 
 func GradientOfCell(S_0 int) {
-	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
+	cellSize := S_0 / DescriptorParam_M
+	blockSize := cellSize / DescriptorParam_m
 	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
 		//_ = calculateCenters(w, h, float64(S_0))
 		width, height := int(w), int(h)
 		var blockWidth = (width + blockSize - 1) / blockSize
 		var blockHeight = (height + blockSize - 1) / blockSize
 
-		//var cellWidth = blockWidth / DescriptorParam_m
-		//var cellHeight = blockHeight / DescriptorParam_m
-
 		var blockGradient = make([][]Histogram, blockHeight)
-		//var cellGradient = make([][]Histogram, cellHeight)
+
 		for rowIdx := 0; rowIdx < blockHeight; rowIdx++ {
 			blockGradient[rowIdx] = make([]Histogram, blockWidth)
 			for colIdx := 0; colIdx < blockWidth; colIdx++ {
@@ -1164,47 +1162,13 @@ func GradientOfCell(S_0 int) {
 			}
 		}
 
-		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradien_%d.json", S_0), blockGradient)
-		//var cellGradient = make([]Histogram, DescriptorParam_M*DescriptorParam_M)
-		//var weight = DistanceInDescriptor[0]
-		//for cellIdx := 0; cellIdx < DescriptorParam_M*DescriptorParam_M; cellIdx++ {
-		//	cellGradient[cellIdx]=
-		//}
+		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradient_%d.json", S_0), blockGradient)
 	})
 }
+func DescriptorOfOneCenter() {
+	var gradient [][]Histogram
+	readJson("tmp/ios/cpu_block_gradient_32.json", &gradient)
 
-func CalculateDescriptorOfAll(file string, S_0 int) []Histogram {
-	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
-	var frameHistogram []Histogram
-	video, err := gocv.VideoCaptureFile(file)
-	if err != nil {
-		panic(err)
-	}
-	w := video.Get(gocv.VideoCaptureFrameWidth)
-	h := video.Get(gocv.VideoCaptureFrameHeight)
-	frameCount := video.Get(gocv.VideoCaptureFrameCount)
-
-	width, height := int(w), int(h)
-	var numberOfX = (width + blockSize - 1) / blockSize
-	var numberOfY = (height + blockSize - 1) / blockSize
-	fmt.Printf("video info: file:%s, width:%.2f height:%.2f frames:%.2f blockX:%d blockY:%d\n",
-		file, w, h, frameCount, numberOfX, numberOfY)
-	var counter = 0
-	readingAllFrameOfVideo(video, func(a, b, x, y, t *gocv.Mat) {
-		fmt.Println("frame finished id=>", counter)
-		counter++
-		var hgOneFrame Histogram
-		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
-			for colIdx := 0; colIdx < numberOfX; colIdx++ {
-				var hg = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
-				hgOneFrame.Add(hg)
-			}
-		}
-		frameHistogram = append(frameHistogram, hgOneFrame)
-	})
-
-	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%s_%d.json", file, S_0), frameHistogram)
-	return frameHistogram
 }
 
 // calculateDistances 计算距离和权重距离

@@ -166,6 +166,7 @@ func testRun(_ *cobra.Command, _ []string) {
 		GradientOfCell(S_0)
 		return
 	case 23:
+		DescriptorOfOneCenter()
 		return
 	}
 }
