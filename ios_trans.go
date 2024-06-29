@@ -305,7 +305,7 @@ func quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height int, gradi
 	gradient[0] = gradient[0] / gradientL2
 	gradient[1] = gradient[1] / gradientL2
 	gradient[2] = gradient[2] / gradientL2
-	for i := 0; i < 10; i++ {
+	for i := 0; i < HistogramSize; i++ {
 		pi, pi10 := projectGradient(gradient, icosahedronCenterP[i]), projectGradient(gradient, icosahedronCenterP[i+10])
 		onePos := math.Abs(pi)
 		twoPos := math.Abs(pi10)
@@ -365,24 +365,6 @@ func calculateCenters(width, height, S float64) (centersOfDesc []WeightsInOfCent
 		}
 	}
 	return
-}
-
-func GradientOfCell(S_0 int) {
-	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
-	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
-		//_ = calculateCenters(w, h, float64(S_0))
-		width, height := int(w), int(h)
-		var numberOfX = (width + blockSize - 1) / blockSize
-		var numberOfY = (height + blockSize - 1) / blockSize
-		var blockGradient = make([][][10]float64, numberOfY)
-		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
-			blockGradient[rowIdx] = make([][10]float64, numberOfX)
-			for colIdx := 0; colIdx < numberOfX; colIdx++ {
-				blockGradient[rowIdx][colIdx] = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
-			}
-		}
-		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradien_%d.json", S_0), blockGradient)
-	})
 }
 
 func readingAllFrameOfVideo(video *gocv.VideoCapture, callback frameCallback2) {
@@ -621,12 +603,12 @@ func FrameQForTimeAlign(file string, S_0 int) []Histogram {
 	w := video.Get(gocv.VideoCaptureFrameWidth)
 	h := video.Get(gocv.VideoCaptureFrameHeight)
 	frameCount := video.Get(gocv.VideoCaptureFrameCount)
-	fmt.Printf("video info: file:%s, width:%.2f height:%.2f frames:%.2f\n", file, w, h, frameCount)
 
 	width, height := int(w), int(h)
 	var numberOfX = (width + blockSize - 1) / blockSize
 	var numberOfY = (height + blockSize - 1) / blockSize
-
+	fmt.Printf("video info: file:%s, width:%.2f height:%.2f frames:%.2f blockX:%d blockY:%d\n",
+		file, w, h, frameCount, numberOfX, numberOfY)
 	var counter = 0
 	readingAllFrameOfVideo(video, func(a, b, x, y, t *gocv.Mat) {
 		fmt.Println("frame finished id=>", counter)
@@ -874,7 +856,6 @@ func alignTestF() {
 
 	saveJson("tmp/ios/ciphered_cpu_frame_histogram_A.json", cipheredAQ)
 	saveJson("tmp/ios/ciphered_cpu_frame_histogram_B.json", cipheredBQ)
-
 }
 
 func AlignFrame() {
@@ -1015,48 +996,6 @@ func DTW(AQ, BQ []Histogram) ([][]int, float64) {
 	}
 
 	return path, dtw[n][m]
-}
-func AlignVideos(videoAPath, videoBPath string, path [][]int, outputAPath, outputBPath string) error {
-	capA, err := gocv.VideoCaptureFile(videoAPath)
-	if err != nil {
-		return fmt.Errorf("error opening video A: %v", err)
-	}
-	defer capA.Close()
-
-	capB, err := gocv.VideoCaptureFile(videoBPath)
-	if err != nil {
-		return fmt.Errorf("error opening video B: %v", err)
-	}
-	defer capB.Close()
-
-	writerA, err := gocv.VideoWriterFile(outputAPath, "mp4v", capA.Get(gocv.VideoCaptureFPS), int(capA.Get(gocv.VideoCaptureFrameWidth)), int(capA.Get(gocv.VideoCaptureFrameHeight)), true)
-	if err != nil {
-		return fmt.Errorf("error opening video writer A: %v", err)
-	}
-	defer writerA.Close()
-
-	writerB, err := gocv.VideoWriterFile(outputBPath, "mp4v", capB.Get(gocv.VideoCaptureFPS), int(capB.Get(gocv.VideoCaptureFrameWidth)), int(capB.Get(gocv.VideoCaptureFrameHeight)), true)
-	if err != nil {
-		return fmt.Errorf("error opening video writer B: %v", err)
-	}
-	defer writerB.Close()
-
-	for _, idx := range path {
-		frameA := gocv.NewMat()
-		frameB := gocv.NewMat()
-
-		capA.Set(gocv.VideoCapturePosFrames, float64(idx[0]))
-		if ok := capA.Read(&frameA); ok {
-			writerA.Write(frameA)
-		}
-
-		capB.Set(gocv.VideoCapturePosFrames, float64(idx[1]))
-		if ok := capB.Read(&frameB); ok {
-			writerB.Write(frameB)
-		}
-	}
-
-	return nil
 }
 
 func cipherFrame(fileA, fileB, targetDir string, path [][]int) {
@@ -1199,4 +1138,61 @@ func cipherFrame2(fileA, fileB, targetDir string, path [][]int) {
 		prevA, prevB = frameA, frameB
 	}
 	fmt.Println("Video alignment completed.")
+}
+
+func GradientOfCell(S_0 int) {
+	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
+	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+		//_ = calculateCenters(w, h, float64(S_0))
+		width, height := int(w), int(h)
+		var blockWidth = (width + blockSize - 1) / blockSize
+		var blockHeight = (height + blockSize - 1) / blockSize
+
+		var cellWidth = blockWidth / DescriptorParam_m
+		var cellHeight = blockHeight / DescriptorParam_m
+
+		var blockGradient = make([][]Histogram, blockHeight)
+		var cellGradient = make([][]Histogram, cellHeight)
+		for rowIdx := 0; rowIdx < blockHeight; rowIdx++ {
+			blockGradient[rowIdx] = make([]Histogram, blockWidth)
+			for colIdx := 0; colIdx < blockWidth; colIdx++ {
+				blockGradient[rowIdx][colIdx] = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
+			}
+		}
+		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradien_%d.json", S_0), blockGradient)
+	})
+}
+
+func CalculateDescriptorOfAll(file string, S_0 int) []Histogram {
+	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
+	var frameHistogram []Histogram
+	video, err := gocv.VideoCaptureFile(file)
+	if err != nil {
+		panic(err)
+	}
+	w := video.Get(gocv.VideoCaptureFrameWidth)
+	h := video.Get(gocv.VideoCaptureFrameHeight)
+	frameCount := video.Get(gocv.VideoCaptureFrameCount)
+
+	width, height := int(w), int(h)
+	var numberOfX = (width + blockSize - 1) / blockSize
+	var numberOfY = (height + blockSize - 1) / blockSize
+	fmt.Printf("video info: file:%s, width:%.2f height:%.2f frames:%.2f blockX:%d blockY:%d\n",
+		file, w, h, frameCount, numberOfX, numberOfY)
+	var counter = 0
+	readingAllFrameOfVideo(video, func(a, b, x, y, t *gocv.Mat) {
+		fmt.Println("frame finished id=>", counter)
+		counter++
+		var hgOneFrame Histogram
+		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
+			for colIdx := 0; colIdx < numberOfX; colIdx++ {
+				var hg = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
+				hgOneFrame.Add(hg)
+			}
+		}
+		frameHistogram = append(frameHistogram, hgOneFrame)
+	})
+
+	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%s_%d.json", file, S_0), frameHistogram)
+	return frameHistogram
 }
