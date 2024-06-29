@@ -841,13 +841,49 @@ func alignTestE() {
 	extractFrames("A_2.mp4", "tmp/ios/gpu_align_a.mp4", startA, startA+Len)
 	extractFrames("B_2.mp4", "tmp/ios/gpu_align_b.mp4", startB, startB+Len)
 }
+func alignTestF() {
+	var AQ []Histogram
+	var BQ []Histogram
+	readJson("tmp/ios/cpu_frame_histogram_A.mp4_32.json", &AQ)
+	readJson("tmp/ios/cpu_frame_histogram_B.mp4_32.json", &BQ)
+
+	ncc := nccOfAllFrameByHistogram(AQ, BQ)
+	saveJson("tmp/ios/ncc_a_b.json", ncc)
+	var gap = testTool.window
+
+	//fmt.Printf("a=%d,b=%d\n", startA, startB)
+	//gap, err := findMinMaxCoordinates(ncc)
+	//if err != nil {
+	//	panic(err)
+	//}
+
+	startA, startB, _ := findMaxNCCSequence(ncc, gap)
+	fmt.Println("step1:", startA, startB, gap)
+	extractFrames("A.mp4", "tmp/ios/align_a.mp4", startA, gap+startA)
+	extractFrames("B.mp4", "tmp/ios/align_b.mp4", startB, gap+startB)
+	//fmt.Println(findAlignmentPath(AQ, BQ, Len))
+	//path := findAlignmentPath(AQ, BQ, Len)
+	//cipherFrame("A.mp4", "B.mp4", "tmp/ios/", path)
+
+	var cipheredAQ = make([]Histogram, gap)
+	var cipheredBQ = make([]Histogram, gap)
+	for i := 0; i < gap; i++ {
+		cipheredAQ[i] = AQ[startA+i]
+		cipheredBQ[i] = BQ[startB+i]
+	}
+
+	saveJson("tmp/ios/ciphered_cpu_frame_histogram_A.json", cipheredAQ)
+	saveJson("tmp/ios/ciphered_cpu_frame_histogram_B.json", cipheredBQ)
+
+}
 
 func AlignFrame() {
 	//alignTestA()
 	//alignTestB()
 	//alignTestC()
 	//alignTestD()
-	alignTestE()
+	//alignTestE()
+	alignTestF()
 	//av, _ := gocv.VideoCaptureFile("A_2.mp4")
 	//bv, _ := gocv.VideoCaptureFile("B_2.mp4")
 	//saveVideoFromFrame(av, startA, "tmp/ios/align_a.mp4")
