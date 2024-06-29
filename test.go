@@ -159,10 +159,14 @@ func testRun(_ *cobra.Command, _ []string) {
 		fmt.Println("时长：", time.Now().UnixMilli()-now)
 		return
 	case 21:
-		AlignFrame()
+		CommTest()
+		return
 	case 22:
 		var S_0 = 32
 		GradientOfCell(S_0)
+		return
+	case 23:
+		return
 	}
 }
 

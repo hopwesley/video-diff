@@ -858,13 +858,17 @@ func alignTestF() {
 	saveJson("tmp/ios/ciphered_cpu_frame_histogram_B.json", cipheredBQ)
 }
 
-func AlignFrame() {
+func CommTest() {
+	//var sigma = 1.0
+	//calculateDistances(32, DescriptorParam_M, DescriptorParam_m, 16)
+	calculateDistances(64, DescriptorParam_M, DescriptorParam_m, 32)
+	//calculateDistances(128, DescriptorParam_M, DescriptorParam_m, 64)
 	//alignTestA()
 	//alignTestB()
 	//alignTestC()
 	//alignTestD()
 	//alignTestE()
-	alignTestF()
+	//alignTestF()
 	//av, _ := gocv.VideoCaptureFile("A_2.mp4")
 	//bv, _ := gocv.VideoCaptureFile("B_2.mp4")
 	//saveVideoFromFrame(av, startA, "tmp/ios/align_a.mp4")
@@ -1148,18 +1152,24 @@ func GradientOfCell(S_0 int) {
 		var blockWidth = (width + blockSize - 1) / blockSize
 		var blockHeight = (height + blockSize - 1) / blockSize
 
-		var cellWidth = blockWidth / DescriptorParam_m
-		var cellHeight = blockHeight / DescriptorParam_m
+		//var cellWidth = blockWidth / DescriptorParam_m
+		//var cellHeight = blockHeight / DescriptorParam_m
 
 		var blockGradient = make([][]Histogram, blockHeight)
-		var cellGradient = make([][]Histogram, cellHeight)
+		//var cellGradient = make([][]Histogram, cellHeight)
 		for rowIdx := 0; rowIdx < blockHeight; rowIdx++ {
 			blockGradient[rowIdx] = make([]Histogram, blockWidth)
 			for colIdx := 0; colIdx < blockWidth; colIdx++ {
 				blockGradient[rowIdx][colIdx] = quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
 			}
 		}
+
 		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradien_%d.json", S_0), blockGradient)
+		//var cellGradient = make([]Histogram, DescriptorParam_M*DescriptorParam_M)
+		//var weight = DistanceInDescriptor[0]
+		//for cellIdx := 0; cellIdx < DescriptorParam_M*DescriptorParam_M; cellIdx++ {
+		//	cellGradient[cellIdx]=
+		//}
 	})
 }
 
@@ -1195,4 +1205,40 @@ func CalculateDescriptorOfAll(file string, S_0 int) []Histogram {
 
 	saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%s_%d.json", file, S_0), frameHistogram)
 	return frameHistogram
+}
+
+// calculateDistances 计算距离和权重距离
+func calculateDistances(S, M, m int, sigma float64) ([][]float64, [][]float64) {
+	distances := make([][]float64, M*m)
+	weightedDistances := make([][]float64, M*m)
+	for i := range distances {
+		distances[i] = make([]float64, M*m)
+		weightedDistances[i] = make([]float64, M*m)
+	}
+
+	centerX := float64(S) / 2
+	centerY := float64(S) / 2
+	blockSize := float64(S) / float64(M*m)
+	center := Point{X: centerX, Y: centerY}
+
+	for i := 0; i < M*m; i++ {
+		for j := 0; j < M*m; j++ {
+			blockTopLeftX := float64(j) * blockSize
+			blockTopLeftY := float64(i) * blockSize
+
+			blockCenterX := blockTopLeftX + blockSize/2
+			blockCenterY := blockTopLeftY + blockSize/2
+			blockCenter := Point{X: blockCenterX, Y: blockCenterY}
+
+			distance := math.Sqrt(math.Pow(centerX-blockCenterX, 2) + math.Pow(centerY-blockCenterY, 2))
+			distances[i][j] = distance
+
+			weightedDistance := GaussianKernel2D(blockCenter, center, sigma)
+			fmt.Println(blockCenter, center, weightedDistance)
+			weightedDistances[i][j] = weightedDistance
+		}
+	}
+	saveJson(fmt.Sprintf("tmp/ios/desc_distances_%d.json", S), distances)
+	saveJson(fmt.Sprintf("tmp/ios/desc_weighted_%d.json", S), weightedDistances)
+	return distances, weightedDistances
 }
