@@ -76,10 +76,10 @@ func init() {
 		"v", false, "golf -v")
 
 	flags.StringVarP(&param.alignedAFile, "source",
-		"a", "align_A.mp4", "golf -a align_A.mp4")
+		"a", "align_a.mp4", "golf -a align_a.mp4")
 
 	flags.StringVarP(&param.alignedBFile, "dest",
-		"b", "align_B.mp4", "golf -b align_B.mp4")
+		"b", "align_b.mp4", "golf -b align_b.mp4")
 
 	flags.IntVarP(&param.centerX, "center-x", "x", -1, "")
 	flags.IntVarP(&param.centerY, "center-y", "y", -1, "")

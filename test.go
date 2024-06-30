@@ -65,10 +65,10 @@ func init() {
 		"s", 32, "golf test -s 32")
 
 	flags.StringVarP(&param.alignedAFile, "align-source",
-		"k", "align_A.mp4", "golf -k align_A.mp4")
+		"k", "align_a.mp4", "golf -k align_a.mp4")
 
 	flags.StringVarP(&param.alignedBFile, "align-dest",
-		"l", "align_B.mp4", "golf -l align_B.mp4")
+		"l", "align_b.mp4", "golf -l align_b.mp4")
 
 	flags.Float64VarP(&testTool.alpha, "alpha", "f", 0.75, "golf test -f 0.75")
 	flags.Float64VarP(&testTool.betaLow, "betaL", "i", 0.2, "golf test -i 0.2")
@@ -154,8 +154,12 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 20:
 		S_0 := 32
 		now := time.Now().UnixMilli()
-		FrameQForTimeAlign(param.rawAFile, S_0)
-		FrameQForTimeAlign(param.rawBFile, S_0)
+		//FrameQForTimeAlign(param.rawAFile, S_0)
+		//FrameQForTimeAlign(param.rawBFile, S_0)
+
+		FrameQForTimeAlign(param.alignedAFile, S_0)
+		FrameQForTimeAlign(param.alignedBFile, S_0)
+
 		fmt.Println("时长：", time.Now().UnixMilli()-now)
 		return
 	case 21:
@@ -163,10 +167,35 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 22:
 		var S_0 = 32
-		GradientOfCell(S_0)
+		GradientOfBlockInOneFrame(S_0, param.alignedAFile)
+		//GradientOfBlockInOneFrame(S_0*2, param.alignedAFile)
+		//GradientOfBlockInOneFrame(S_0*4, param.alignedAFile)
+		GradientOfBlockInOneFrame(S_0, param.alignedBFile)
+		//GradientOfBlockInOneFrame(S_0*2, param.alignedBFile)
+		//GradientOfBlockInOneFrame(S_0*4, param.alignedBFile)
 		return
 	case 23:
 		DescriptorOfOneCenter()
+		return
+	case 24:
+		DescOfOneFrame()
+		return
+	case 25:
+		IosOldRoiHistogram()
+		return
+
+	case 26:
+		WtlOfOneCenter()
+		return
+	case 27:
+		WtlOfOneFrame()
+		return
+
+	case 28:
+		var S_0 = 32
+		calculateDistances(S_0, Cell_M, Cell_m, 16)
+		calculateDistances(S_0*2, Cell_M, Cell_m, 32)
+		calculateDistances(S_0*4, Cell_M, Cell_m, 64)
 		return
 	}
 }
@@ -393,6 +422,7 @@ func roiGradient(grayFrame gocv.Mat, roiCenter Point, roiSide int) []float64 {
 
 	l2Norm := norm2Float(des)
 	regularizedNorm := l2Norm + 1 // 正则化L2范数加1
+	//fmt.Println("roi histogram len:", cellSide, l2Norm, regularizedNorm)
 	for i := range des {
 		des[i] /= regularizedNorm // 归一化每个元素
 	}
@@ -591,7 +621,7 @@ func wtl(frameA, frameA2 gocv.Mat, roiSize int) [][]float64 {
 
 func ComputeWt() {
 	//frameA, frameA2, _, _ := testData()
-	frameA, frameA2 := getVideoFirstFrame("align_A.mp4", "align_B.mp4")
+	frameA, frameA2 := getVideoFirstFrame("align_a.mp4", "align_b.mp4")
 	__saveImg(frameA, "wt_at_raw_a.png")
 	__saveImg(frameA2, "wt_at_raw_b.png")
 	defer frameA.Close()

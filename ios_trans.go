@@ -7,11 +7,6 @@ import (
 	"reflect"
 )
 
-const (
-	DescriptorParam_M = 2
-	DescriptorParam_m = 4
-)
-
 func SimpleSpatial() {
 	video, err := gocv.VideoCaptureFile(param.rawAFile)
 	if err != nil {
@@ -193,6 +188,14 @@ func (h *Histogram) Add(hg Histogram) {
 		h[i] += hg[i]
 	}
 }
+
+func (h *Histogram) Scale(s float64) (r Histogram) {
+	for i := 0; i < HistogramSize; i++ {
+		r[i] = h[i] * s
+	}
+	return
+}
+
 func (h *Histogram) dotProduct(h2 Histogram) float64 {
 	var sum float64
 	for i := 0; i < HistogramSize; i++ {
@@ -232,7 +235,7 @@ func calculateDistance(h1, h2 Histogram) float64 {
 }
 
 func AverageGradientOfBlock(S_0 int) {
-	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
+	blockSize := S_0 / Cell_M / Cell_m
 	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
 
 		grayFloat, _ := matToFloatArray(*x)
@@ -333,8 +336,8 @@ type WeightsInOfCenter struct {
 }
 
 func calculateCenters(width, height, S float64) (centersOfDesc []WeightsInOfCenter) {
-	numberXOfBlock := DescriptorParam_M * DescriptorParam_m
-	numberYOfBlock := DescriptorParam_M * DescriptorParam_m
+	numberXOfBlock := Cell_M * Cell_m
+	numberYOfBlock := Cell_M * Cell_m
 	blockSize := S / float64(numberXOfBlock)
 	sigma := float64(S) / 2.0 // Standard deviation for Gaussian kernel
 	for centerY := S / 2; centerY < height; centerY += blockSize {
@@ -511,7 +514,7 @@ func testCpuOrGpu() {
 
 	width := len(grayA[0])
 	height := len(grayA)
-	blockSize := 32 / DescriptorParam_M / DescriptorParam_m
+	blockSize := 32 / Cell_M / Cell_m
 	var numberOfX = (width + blockSize - 1) / blockSize
 	var numberOfY = (height + blockSize - 1) / blockSize
 	var blockGradient = make([][][10]float64, numberOfY)
@@ -594,7 +597,7 @@ func arrayToMat(array interface{}) (gocv.Mat, error) {
 }
 
 func FrameQForTimeAlign(file string, S_0 int) []Histogram {
-	blockSize := S_0 / DescriptorParam_M / DescriptorParam_m
+	blockSize := S_0 / Cell_M / Cell_m
 	var frameHistogram []Histogram
 	video, err := gocv.VideoCaptureFile(file)
 	if err != nil {
@@ -729,8 +732,10 @@ func findMinMaxCoordinates(nccValues [][]float64) (gap int, err error) {
 func alignTestB() {
 	var AQ []Histogram
 	var BQ []Histogram
-	readJson("tmp/ios/cpu_frame_histogram_A.mp4_32.json", &AQ)
-	readJson("tmp/ios/cpu_frame_histogram_B.mp4_32.json", &BQ)
+	//readJson("tmp/ios/cpu_frame_histogram_A.mp4_32.json", &AQ)
+	//readJson("tmp/ios/cpu_frame_histogram_B.mp4_32.json", &BQ)
+	readJson("tmp/ios/cpu_frame_histogram_align_a.mp4_32.json", &AQ)
+	readJson("tmp/ios/cpu_frame_histogram_align_b.mp4_32.json", &BQ)
 
 	ncc := nccOfAllFrameByHistogram(AQ, BQ)
 	saveJson("tmp/ios/ncc_a_b.json", ncc)
@@ -860,11 +865,8 @@ func alignTestF() {
 
 func CommTest() {
 	//var sigma = 1.0
-	//calculateDistances(32, DescriptorParam_M, DescriptorParam_m, 16)
-	calculateDistances(64, DescriptorParam_M, DescriptorParam_m, 32)
-	//calculateDistances(128, DescriptorParam_M, DescriptorParam_m, 64)
 	//alignTestA()
-	//alignTestB()
+	alignTestB()
 	//alignTestC()
 	//alignTestD()
 	//alignTestE()
@@ -914,6 +916,7 @@ func testZeroFrameGradient() {
 	frameHistogram = append(frameHistogram, hgOneFrame)
 	saveJson("tmp/ios/cpu_gpu_frame_histogram.json", frameHistogram)
 }
+
 func localDTW(a, b []Histogram, window int) float64 {
 	n, m := len(a), len(b)
 	dtw := make([][]float64, n+1)
@@ -1144,10 +1147,10 @@ func cipherFrame2(fileA, fileB, targetDir string, path [][]int) {
 	fmt.Println("Video alignment completed.")
 }
 
-func GradientOfCell(S_0 int) {
-	cellSize := S_0 / DescriptorParam_M
-	blockSize := cellSize / DescriptorParam_m
-	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+func GradientOfBlockInOneFrame(S_0 int, file string) {
+	cellSize := S_0 / Cell_M
+	blockSize := cellSize / Cell_m
+	read2FrameFromSameVideo(file, func(w, h float64, a, b, x, y, t *gocv.Mat) {
 		//_ = calculateCenters(w, h, float64(S_0))
 		width, height := int(w), int(h)
 		var blockWidth = (width + blockSize - 1) / blockSize
@@ -1162,13 +1165,37 @@ func GradientOfCell(S_0 int) {
 			}
 		}
 
-		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradient_%d.json", S_0), blockGradient)
+		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradient_%s_%d.json", file, S_0), blockGradient)
 	})
 }
+
 func DescriptorOfOneCenter() {
 	var gradient [][]Histogram
 	readJson("tmp/ios/cpu_block_gradient_32.json", &gradient)
+	blockNumInRoi := Cell_M * Cell_m
+	for k := 10; k < 12; k++ {
 
+		var weightedBlockGradientInDesc = make([][]Histogram, blockNumInRoi)
+		var descHistogram = make([]Histogram, Cell_M*Cell_M)
+
+		for i := 0; i < blockNumInRoi; i++ {
+			weightedBlockGradientInDesc[i] = make([]Histogram, blockNumInRoi)
+		}
+
+		for i := 0; i < blockNumInRoi; i++ {
+			for j := 0; j < blockNumInRoi; j++ {
+				whg := gradient[i+k][j+k].Scale(weightedDistances[i][j])
+				weightedBlockGradientInDesc[i][j] = whg
+				cellIdx := (i/Cell_m)*Cell_M + j/Cell_m
+				descHistogram[cellIdx].Add(whg)
+				fmt.Println(weightedDistances[i][j], gradient[i][j], whg, descHistogram[cellIdx], "(", i, j, "),(", cellIdx, ")")
+			}
+		}
+		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradient_32_one_desc_%d.json", k), weightedBlockGradientInDesc)
+		saveJson(fmt.Sprintf("tmp/ios/cpu_desc_gradient_one_%d.json", k), descHistogram)
+		normalizedDescHistogram(descHistogram)
+		saveJson(fmt.Sprintf("tmp/ios/cpu_desc_gradient_one_normalized_%d.json", k), descHistogram)
+	}
 }
 
 // calculateDistances 计算距离和权重距离
@@ -1205,4 +1232,183 @@ func calculateDistances(S, M, m int, sigma float64) ([][]float64, [][]float64) {
 	saveJson(fmt.Sprintf("tmp/ios/desc_distances_%d.json", S), distances)
 	saveJson(fmt.Sprintf("tmp/ios/desc_weighted_%d.json", S), weightedDistances)
 	return distances, weightedDistances
+}
+
+func normalizedDescHistogram(descHistogram []Histogram) {
+	l2Norm := 0.0
+	for _, histogram := range descHistogram {
+		for _, value := range histogram {
+			l2Norm += value * value
+		}
+	}
+	l2Norm = math.Sqrt(l2Norm)
+
+	// 正则化L2范数
+	l2NormRegularized := l2Norm + 1
+
+	// 归一化descHistogram
+	for i := range descHistogram {
+		for j := range descHistogram[i] {
+			descHistogram[i][j] = descHistogram[i][j] / l2NormRegularized
+		}
+	}
+}
+
+func DescOfOneFrame() {
+	var gradient [][]Histogram
+	readJson("tmp/ios/cpu_block_gradient_32.json", &gradient)
+	height := len(gradient)
+	width := len(gradient[0])
+	fmt.Println("width:", width, "height", height)
+	blockNumOfOneRoi := Cell_M * Cell_m
+	roiNumX := width - blockNumOfOneRoi
+	roiNumY := height - blockNumOfOneRoi
+	//roiGap := SideSize / Cell_M / Cell_m
+	fmt.Println("desc size x:", roiNumX, "desc size y:", roiNumY)
+	frameGradient := make([][][Cell_M * Cell_M]Histogram, roiNumY)
+	for i := 0; i < roiNumY; i++ {
+		frameGradient[i] = make([][Cell_M * Cell_M]Histogram, roiNumX)
+		for j := 0; j < roiNumX; j++ {
+			frameGradient[i][j] = histogramOfOneDesc(i, j, width, height, gradient)
+		}
+	}
+
+	saveJson("tmp/ios/cpu_one_frame_descriptor_level_0.json", frameGradient)
+}
+
+func histogramOfOneDesc(rowOffset, colOffset, width, height int, gradient [][]Histogram) (oneDescHistogram [Cell_M * Cell_M]Histogram) {
+	blockNumInRoi := Cell_M * Cell_m
+
+	for i := 0; i < blockNumInRoi; i++ {
+		for j := 0; j < blockNumInRoi; j++ {
+			gradientRowIdx, gradientColIdx := i+rowOffset, j+colOffset
+			if gradientRowIdx >= height || gradientColIdx >= width {
+				fmt.Println("overflow:", i, j, gradientRowIdx, gradientColIdx, width, height)
+				continue
+			}
+			whg := gradient[gradientRowIdx][gradientColIdx].Scale(weightedDistances[i][j])
+			cellIdx := (i/Cell_m)*Cell_M + j/Cell_m
+			oneDescHistogram[cellIdx].Add(whg)
+		}
+	}
+
+	normalizedDescHistogram(oneDescHistogram[:])
+	return
+}
+
+func IosOldRoiHistogram() {
+	video, _ := gocv.VideoCaptureFile("tmp/ios/align_a.mp4")
+	var frameA = gocv.NewMat()
+	if ok := video.Read(&frameA); !ok || frameA.Empty() {
+		panic("read error")
+	}
+
+	var grayFrame = gocv.NewMat()
+	gocv.CvtColor(frameA, &grayFrame, gocv.ColorRGBToGray)
+	defer frameA.Close()
+	roiSize := 32
+	center := Point{
+		X: 16,
+		Y: 16,
+	}
+	roiA := roiGradient(grayFrame, center, roiSize)
+	saveJson("tmp/ios/cpu_desc_one_roi.json", roiA)
+}
+func WtlOfOneCenter() {
+	var blockGradientA [][]Histogram
+	var blockGradientB [][]Histogram
+	readJson("tmp/ios/cpu_block_gradient_A.mp4_32.json", &blockGradientA)
+	readJson("tmp/ios/cpu_block_gradient_B.mp4_32.json", &blockGradientB)
+
+	blockNumInRoi := Cell_M * Cell_m
+	k := 0
+	var descHistogramA = make([]Histogram, Cell_M*Cell_M)
+	var descHistogramB = make([]Histogram, Cell_M*Cell_M)
+	var wtlOfOneFrame = make([]float64, Cell_M*Cell_M)
+
+	for i := 0; i < blockNumInRoi; i++ {
+		for j := 0; j < blockNumInRoi; j++ {
+			whgA := blockGradientA[i+k][j+k].Scale(weightedDistances[i][j])
+			whgB := blockGradientB[i+k][j+k].Scale(weightedDistances[i][j])
+			cellIdx := (i/Cell_m)*Cell_M + j/Cell_m
+			descHistogramA[cellIdx].Add(whgA)
+			descHistogramB[cellIdx].Add(whgB)
+			wtlOfOneFrame[cellIdx] = calculateWtlOfOneRoi(descHistogramA, descHistogramB)
+		}
+	}
+	normalizedDescHistogram(descHistogramA)
+	normalizedDescHistogram(descHistogramB)
+
+	saveJson("tmp/ios/cpu_one_center_descriptor_level_0_A.json", descHistogramA)
+	saveJson("tmp/ios/cpu_one_center_descriptor_level_0_B.json", descHistogramB)
+	saveJson("tmp/ios/cpu_one_center_wtl_level_0.json", wtlOfOneFrame)
+}
+
+func WtlOfOneFrame() {
+	var blockGradientA [][]Histogram
+	var blockGradientB [][]Histogram
+	readJson("tmp/ios/cpu_block_gradient_A.mp4_32.json", &blockGradientA)
+	readJson("tmp/ios/cpu_block_gradient_B.mp4_32.json", &blockGradientB)
+
+	height := len(blockGradientA)
+	width := len(blockGradientA[0])
+	fmt.Println("width:", width, "height", height)
+
+	blockNumOfOneRoi := Cell_M * Cell_m
+	roiNumX := width - blockNumOfOneRoi
+	roiNumY := height - blockNumOfOneRoi
+	//roiGap := SideSize / Cell_M / Cell_m
+	fmt.Println("desc size x:", roiNumX, "desc size y:", roiNumY)
+	descriptorA := make([][][Cell_M * Cell_M]Histogram, roiNumY)
+	descriptorB := make([][][Cell_M * Cell_M]Histogram, roiNumY)
+	wtlOfOneFrame := make([][]float64, roiNumY)
+	for i := 0; i < roiNumY; i++ {
+		wtlOfOneFrame[i] = make([]float64, roiNumX)
+		descriptorB[i] = make([][Cell_M * Cell_M]Histogram, roiNumX)
+		descriptorA[i] = make([][Cell_M * Cell_M]Histogram, roiNumX)
+		for j := 0; j < roiNumX; j++ {
+			descriptorA[i][j], descriptorB[i][j] = wtlOfOneDesc(i, j, width, height, blockGradientA, blockGradientB)
+			wtlOfOneFrame[i][j] = calculateWtlOfOneRoi(descriptorA[i][j][:], descriptorB[i][j][:])
+		}
+	}
+	saveJson("tmp/ios/cpu_one_frame_descriptor_level_0_A.json", descriptorA)
+	saveJson("tmp/ios/cpu_one_frame_descriptor_level_0_B.json", descriptorB)
+	saveJson("tmp/ios/cpu_one_frame_wtl_level_0.json", wtlOfOneFrame)
+}
+
+func calculateWtlOfOneRoi(histA, histB []Histogram) float64 {
+	sum := 0.0
+
+	for i := 0; i < len(histA); i++ {
+		for j := 0; j < HistogramSize; j++ {
+			diff := histA[i][j] - histB[i][j]
+			sum += diff * diff
+		}
+	}
+
+	return math.Sqrt(sum)
+}
+
+func wtlOfOneDesc(rowOffset, colOffset, width, height int, gradientA, gradientB [][]Histogram) (descriptorA, descriptorB [Cell_M * Cell_M]Histogram) {
+	blockNumInRoi := Cell_M * Cell_m
+
+	for i := 0; i < blockNumInRoi; i++ {
+		for j := 0; j < blockNumInRoi; j++ {
+			gradientRowIdx, gradientColIdx := i+rowOffset, j+colOffset
+			if gradientRowIdx >= height || gradientColIdx >= width {
+				fmt.Println("overflow:", i, j, gradientRowIdx, gradientColIdx, width, height)
+				continue
+			}
+
+			weightedHistogramA := gradientA[gradientRowIdx][gradientColIdx].Scale(weightedDistances[i][j])
+			weightedHistogramB := gradientB[gradientRowIdx][gradientColIdx].Scale(weightedDistances[i][j])
+			cellIdx := (i/Cell_m)*Cell_M + j/Cell_m
+			descriptorA[cellIdx].Add(weightedHistogramA)
+			descriptorB[cellIdx].Add(weightedHistogramB)
+		}
+	}
+
+	normalizedDescHistogram(descriptorA[:])
+	normalizedDescHistogram(descriptorB[:])
+	return
 }
