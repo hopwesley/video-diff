@@ -185,7 +185,8 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 
 	case 26:
-		WtlOfOneCenter()
+		WtlOfOneCenter(10)
+		WtlOfOneCenter(11)
 		return
 	case 27:
 		WtlOfOneFrame()

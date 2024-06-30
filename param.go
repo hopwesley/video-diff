@@ -1,5 +1,10 @@
 package main
 
+import (
+	"fmt"
+	"math"
+)
+
 var DistanceInDescriptor = [3][Cell_M * Cell_m][Cell_M * Cell_m]float64{
 	{
 		{19.79898987322333, 17.204650534085253, 15.231546211727817, 14.142135623730951, 14.142135623730951, 15.231546211727817, 17.204650534085253, 19.79898987322333},
@@ -42,4 +47,40 @@ var weightedDistances = [][]float64{
 	{0.635638673826052, 0.76672659607082, 0.8688150562628432, 0.9248488132162048, 0.9248488132162048, 0.8688150562628432, 0.76672659607082, 0.635638673826052},
 	{0.5609491608144708, 0.676633846161729, 0.76672659607082, 0.8161762130223398, 0.8161762130223398, 0.76672659607082, 0.676633846161729, 0.5609491608144708},
 	{0.4650431881340563, 0.5609491608144708, 0.635638673826052, 0.676633846161729, 0.676633846161729, 0.635638673826052, 0.5609491608144708, 0.4650431881340563},
+}
+
+// calculateDistances 计算距离和权重距离
+func calculateDistances(S, M, m int, sigma float64) ([][]float64, [][]float64) {
+	distances := make([][]float64, M*m)
+	weightedDistances := make([][]float64, M*m)
+	for i := range distances {
+		distances[i] = make([]float64, M*m)
+		weightedDistances[i] = make([]float64, M*m)
+	}
+
+	centerX := float64(S) / 2
+	centerY := float64(S) / 2
+	blockSize := float64(S) / float64(M*m)
+	center := Point{X: centerX, Y: centerY}
+
+	for i := 0; i < M*m; i++ {
+		for j := 0; j < M*m; j++ {
+			blockTopLeftX := float64(j) * blockSize
+			blockTopLeftY := float64(i) * blockSize
+
+			blockCenterX := blockTopLeftX + blockSize/2
+			blockCenterY := blockTopLeftY + blockSize/2
+			blockCenter := Point{X: blockCenterX, Y: blockCenterY}
+
+			distance := math.Sqrt(math.Pow(centerX-blockCenterX, 2) + math.Pow(centerY-blockCenterY, 2))
+			distances[i][j] = distance
+
+			weightedDistance := GaussianKernel2D(blockCenter, center, sigma)
+			fmt.Println(blockCenter, center, weightedDistance)
+			weightedDistances[i][j] = weightedDistance
+		}
+	}
+	saveJson(fmt.Sprintf("tmp/ios/desc_distances_%d.json", S), distances)
+	saveJson(fmt.Sprintf("tmp/ios/desc_weighted_%d.json", S), weightedDistances)
+	return distances, weightedDistances
 }
