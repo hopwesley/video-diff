@@ -131,7 +131,7 @@ func testRun(_ *cobra.Command, _ []string) {
 		IosQuantizeGradient()
 		return
 	case 18:
-		testZeroFrameGradient()
+		//testZeroFrameGradient()
 		//testCpuOrGpu()
 		//grayDataToImg("tmp/ios/gpu_grayBufferA.json")
 		//grayDataToImg("tmp/ios/gpu_grayBufferB.json")
@@ -139,7 +139,9 @@ func testRun(_ *cobra.Command, _ []string) {
 		//histogramToImg("tmp/ios/gpu_frame_quantity_4.json")
 		//gradientToImg("tmp/ios/gpu_gradientXBuffer.json")
 		//gradientToImg("tmp/ios/gpu_gradientYBuffer.json")
-		//histogramToImg("tmp/ios/cpu_block_gradient_32.json")
+		//histogramToImg("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_32.json")
+		//histogramToImg("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_64.json")
+		//histogramToImg("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_128.json")
 		//
 		//gradientToImg("tmp/ios/gpu_frame_histogram_A.json")
 		//gradientToImg("tmp/ios/gpu_frame_histogram_B.json")
@@ -168,35 +170,89 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 22:
 		var S_0 = 32
 		GradientOfBlockInOneFrame(S_0, param.alignedAFile)
-		//GradientOfBlockInOneFrame(S_0*2, param.alignedAFile)
-		//GradientOfBlockInOneFrame(S_0*4, param.alignedAFile)
+		GradientOfBlockInOneFrame(S_0*2, param.alignedAFile)
+		GradientOfBlockInOneFrame(S_0*4, param.alignedAFile)
 		GradientOfBlockInOneFrame(S_0, param.alignedBFile)
-		//GradientOfBlockInOneFrame(S_0*2, param.alignedBFile)
-		//GradientOfBlockInOneFrame(S_0*4, param.alignedBFile)
+		GradientOfBlockInOneFrame(S_0*2, param.alignedBFile)
+		GradientOfBlockInOneFrame(S_0*4, param.alignedBFile)
 		return
 	case 23:
-		DescriptorOfOneCenter()
+		var gradient [][]Histogram
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_32.json", &gradient)
+		DescriptorOfOneCenter(gradient, 32, weightsWithDistance[0])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_64.json", &gradient)
+		DescriptorOfOneCenter(gradient, 64, weightsWithDistance[1])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_128.json", &gradient)
+		DescriptorOfOneCenter(gradient, 128, weightsWithDistance[2])
 		return
 	case 24:
-		DescOfOneFrame()
+		var gradientA [][]Histogram
+		var gradientB [][]Histogram
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_32.json", &gradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_32.json", &gradientB)
+		DescOfOneFrame(gradientA, gradientB, 32, weightsWithDistance[0])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_64.json", &gradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_64.json", &gradientB)
+		DescOfOneFrame(gradientA, gradientB, 64, weightsWithDistance[1])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_128.json", &gradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_128.json", &gradientB)
+		DescOfOneFrame(gradientA, gradientB, 128, weightsWithDistance[2])
 		return
 	case 25:
 		IosOldRoiHistogram()
 		return
 
 	case 26:
-		WtlOfOneCenter(10)
-		WtlOfOneCenter(11)
+		var blockGradientA [][]Histogram
+		var blockGradientB [][]Histogram
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_32.json", &blockGradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_32.json", &blockGradientB)
+		WtlOfOneCenter(blockGradientA, blockGradientB, 10, 32, weightsWithDistance[0])
+		WtlOfOneCenter(blockGradientA, blockGradientB, 11, 32, weightsWithDistance[0])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_64.json", &blockGradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_64.json", &blockGradientB)
+		WtlOfOneCenter(blockGradientA, blockGradientB, 10, 64, weightsWithDistance[1])
+		WtlOfOneCenter(blockGradientA, blockGradientB, 11, 64, weightsWithDistance[1])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_128.json", &blockGradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_128.json", &blockGradientB)
+		WtlOfOneCenter(blockGradientA, blockGradientB, 10, 128, weightsWithDistance[2])
+		WtlOfOneCenter(blockGradientA, blockGradientB, 11, 128, weightsWithDistance[2])
 		return
 	case 27:
-		WtlOfOneFrame()
+		var blockGradientA [][]Histogram
+		var blockGradientB [][]Histogram
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_32.json", &blockGradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_32.json", &blockGradientB)
+		WtlOfOneFrame(blockGradientA, blockGradientB, 32, weightsWithDistance[0])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_64.json", &blockGradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_64.json", &blockGradientB)
+		WtlOfOneFrame(blockGradientA, blockGradientB, 64, weightsWithDistance[1])
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_a.mp4_128.json", &blockGradientA)
+		readJson("tmp/ios/cpu_block_gradient_one_frame_align_b.mp4_128.json", &blockGradientB)
+		WtlOfOneFrame(blockGradientA, blockGradientB, 128, weightsWithDistance[2])
 		return
 
 	case 28:
 		var S_0 = 32
-		calculateDistances(S_0, Cell_M, Cell_m, 16)
-		calculateDistances(S_0*2, Cell_M, Cell_m, 32)
-		calculateDistances(S_0*4, Cell_M, Cell_m, 64)
+		calculateDistances(S_0, Cell_M, Cell_m, 1)
+		calculateDistances(S_0*2, Cell_M, Cell_m, 1)
+		calculateDistances(S_0*4, Cell_M, Cell_m, 1)
+		return
+
+	case 29:
+		capA, err := gocv.VideoCaptureFile(param.alignedAFile)
+		if err != nil {
+			panic(err)
+		}
+		defer capA.Close()
+
+		width := int(capA.Get(gocv.VideoCaptureFrameWidth))
+		height := int(capA.Get(gocv.VideoCaptureFrameHeight))
+		BiLinearInterpolate(width, height)
+		return
+
+	case 30:
+		OverlayForOneFrame()
 		return
 	}
 }
