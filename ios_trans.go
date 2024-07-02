@@ -1622,7 +1622,7 @@ func combinedPixelWt(width, height, descriptorSide int, wtls [3][][]float64) [][
 	return normalizeImage(resultCombined)
 }
 
-func FinalFantasy() {
+func CompareVideoFromStart() {
 	now := time.Now()
 	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
 	if err != nil {
@@ -1692,6 +1692,187 @@ func FinalFantasy() {
 		preFrameA = &grayFrameA
 		preFrameB = &grayFrameB
 		counter++
+		fmt.Println("finish frame:", counter)
+	}
+	fmt.Println("time used:", time.Now().Sub(now))
+}
+
+func FilteredVideoDiff() {
+	now := time.Now()
+	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
+	if err != nil {
+		panic(err)
+	}
+	var descriptorSideSizeAtZeroLevel = 32
+	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
+	fps := videoA.Get(gocv.VideoCaptureFPS)
+	fmt.Println("fps:", fps, param.alignedAFile, param.alignedBFile)
+	videoWriter, _ := gocv.VideoWriterFile(
+		"tmp/ios/overlay_result.mp4", // 输出视频文件
+		"mp4v",                       // 编码格式
+		fps,                          // FPS
+		int(width),                   // 视频宽度
+		int(height),                  // 视频高度
+		true)                         // 是否彩色
+	defer videoWriter.Close()
+	var counter = 0
+	var preFrameA *gocv.Mat = nil
+	var preFrameB *gocv.Mat = nil
+	var preWwtl [][]float64 = nil
+
+	for {
+		var frameA = gocv.NewMat()
+		var frameB = gocv.NewMat()
+		if ok := videoA.Read(&frameA); !ok || frameA.Empty() {
+			frameA.Close()
+			break
+		}
+		if ok := videoB.Read(&frameB); !ok || frameB.Empty() {
+			videoB.Close()
+			break
+		}
+
+		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
+		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+		frameA.Close()
+		frameB.Close()
+
+		if preFrameA == nil || preFrameB == nil {
+			preFrameA = &grayFrameA
+			preFrameB = &grayFrameB
+			fmt.Println("start get first frame")
+			continue
+		}
+
+		blockGradientA := avgBlockGradientFromVideo(width, height, *preFrameA, grayFrameA, descriptorSideSizeAtZeroLevel)
+		blockGradientB := avgBlockGradientFromVideo(width, height, *preFrameB, grayFrameB, descriptorSideSizeAtZeroLevel)
+
+		var wtls [3][][]float64
+		for i := 0; i < 3; i++ {
+			wtls[i] = wtlAtOneLevel(blockGradientA[i], blockGradientB[i], weightsWithDistance[i])
+		}
+
+		wwtl := combinedPixelWt(width, height, descriptorSideSizeAtZeroLevel, wtls)
+
+		// 简单的高通滤波：当前帧减去前一帧的权重
+		if preWwtl != nil {
+			for i := range wwtl {
+				for j := range wwtl[i] {
+					wwtl[i][j] = math.Abs(wwtl[i][j] - preWwtl[i][j]) // 使用绝对值
+				}
+			}
+		}
+
+		gradientMagnitude := computeG(grayFrameB)
+		img := overlay(grayFrameA, wwtl, gradientMagnitude)
+		mat, err := gocv.ImageToMatRGB(img)
+		if err != nil {
+			panic(err)
+		}
+		_ = videoWriter.Write(mat)
+
+		mat.Close()
+		preFrameA.Close()
+		preFrameB.Close()
+		preFrameA = &grayFrameA
+		preFrameB = &grayFrameB
+		counter++
+		preWwtl = wwtl
+
+		fmt.Println("finish frame:", counter)
+	}
+	fmt.Println("time used:", time.Now().Sub(now))
+}
+
+func FilteredVideoDiff2() {
+	now := time.Now()
+	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
+	if err != nil {
+		panic(err)
+	}
+	var descriptorSideSizeAtZeroLevel = 32
+	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
+	fps := videoA.Get(gocv.VideoCaptureFPS)
+	fmt.Println("fps:", fps, param.alignedAFile, param.alignedBFile)
+	videoWriter, _ := gocv.VideoWriterFile(
+		"tmp/ios/overlay_result.mp4", // 输出视频文件
+		"mp4v",                       // 编码格式
+		fps,                          // FPS
+		int(width),                   // 视频宽度
+		int(height),                  // 视频高度
+		true)                         // 是否彩色
+	defer videoWriter.Close()
+	var counter = 0
+	var preFrameA *gocv.Mat = nil
+	var preFrameB *gocv.Mat = nil
+	movingAverage := NewMovingAverage(5) // 移动平均窗口大小为5
+
+	for {
+		var frameA = gocv.NewMat()
+		var frameB = gocv.NewMat()
+		if ok := videoA.Read(&frameA); !ok || frameA.Empty() {
+			frameA.Close()
+			break
+		}
+		if ok := videoB.Read(&frameB); !ok || frameB.Empty() {
+			videoB.Close()
+			break
+		}
+
+		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
+		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+		frameA.Close()
+		frameB.Close()
+
+		if preFrameA == nil || preFrameB == nil {
+			preFrameA = &grayFrameA
+			preFrameB = &grayFrameB
+			fmt.Println("start get first frame")
+			continue
+		}
+
+		blockGradientA := avgBlockGradientFromVideo(width, height, *preFrameA, grayFrameA, descriptorSideSizeAtZeroLevel)
+		blockGradientB := avgBlockGradientFromVideo(width, height, *preFrameB, grayFrameB, descriptorSideSizeAtZeroLevel)
+
+		var wtls [3][][]float64
+		for i := 0; i < 3; i++ {
+			wtls[i] = wtlAtOneLevel(blockGradientA[i], blockGradientB[i], weightsWithDistance[i])
+		}
+
+		wwtl := combinedPixelWt(width, height, descriptorSideSizeAtZeroLevel, wtls)
+		// 将当前帧的wwtl添加到移动平均滤波器
+		movingAverage.AddFrame(wwtl)
+
+		// 获取移动平均值
+		averageWwtl := movingAverage.GetAverage()
+		if averageWwtl != nil {
+			// 计算当前帧与移动平均值的差值
+			for i := range wwtl {
+				for j := range wwtl[i] {
+					wwtl[i][j] = math.Abs(wwtl[i][j] - averageWwtl[i][j])
+				}
+			}
+		}
+
+		gradientMagnitude := computeG(grayFrameB)
+		img := overlay(grayFrameA, wwtl, gradientMagnitude)
+		mat, err := gocv.ImageToMatRGB(img)
+		if err != nil {
+			panic(err)
+		}
+		_ = videoWriter.Write(mat)
+
+		mat.Close()
+		preFrameA.Close()
+		preFrameB.Close()
+		preFrameA = &grayFrameA
+		preFrameB = &grayFrameB
+		counter++
+
 		fmt.Println("finish frame:", counter)
 	}
 	fmt.Println("time used:", time.Now().Sub(now))

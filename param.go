@@ -239,8 +239,7 @@ var newWeightComm = [][]float64{{0.0020330718714528856, 0.00430401318564052, 0.0
 //	newWeightComm,
 //}
 
-//new gaussian
-
+// sigma=4
 var weightsWithDistance = [][][]float64{
 	{
 		{7.616241169186581e-7, 0.00001529762932195991, 0.00011303504124060813, 0.00030726109858346385, 0.00030726109858346385, 0.00011303504124060813, 0.00001529762932195991, 7.616241169186581e-7},
@@ -316,4 +315,49 @@ func calculateDistances(S, M, m int, sigma float64) ([][]float64, [][]float64) {
 
 	saveJson(fmt.Sprintf("tmp/ios/desc_weighted_%d.json", S), weightedDistances)
 	return distances, weightedDistances
+}
+
+// 移动平均滤波器
+type MovingAverage struct {
+	windowSize int
+	window     [][][]float64
+}
+
+func NewMovingAverage(windowSize int) *MovingAverage {
+	return &MovingAverage{
+		windowSize: windowSize,
+		window:     make([][][]float64, 0, windowSize),
+	}
+}
+
+func (ma *MovingAverage) AddFrame(frame [][]float64) {
+	if len(ma.window) == ma.windowSize {
+		ma.window = ma.window[1:]
+	}
+	ma.window = append(ma.window, frame)
+}
+
+func (ma *MovingAverage) GetAverage() [][]float64 {
+	if len(ma.window) == 0 {
+		return nil
+	}
+	height := len(ma.window[0])
+	width := len(ma.window[0][0])
+	average := make([][]float64, height)
+	for i := range average {
+		average[i] = make([]float64, width)
+	}
+	for _, frame := range ma.window {
+		for y := 0; y < height; y++ {
+			for x := 0; x < width; x++ {
+				average[y][x] += frame[y][x]
+			}
+		}
+	}
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			average[y][x] /= float64(len(ma.window))
+		}
+	}
+	return average
 }
