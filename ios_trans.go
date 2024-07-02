@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"reflect"
+	"time"
 )
 
 func SimpleSpatial() {
@@ -632,6 +633,20 @@ func FrameQForTimeAlign(file string, S_0 int) []Histogram {
 	return frameHistogram
 }
 
+func AlignVideoFromStart() {
+	AQ := FrameQForTimeAlign(param.rawAFile, 32)
+	BQ := FrameQForTimeAlign(param.rawBFile, 32)
+
+	ncc := nccOfAllFrameByHistogram(AQ, BQ)
+
+	var gap = testTool.window
+
+	startA, startB, _ := findMaxNCCSequence(ncc, gap)
+	fmt.Printf("a=%d,b=%d gap=%d\n", startA, startB, gap)
+	extractFrames(param.rawAFile, "tmp/ios/align_"+param.rawAFile+".mp4", startA, startA+gap)
+	extractFrames(param.rawBFile, "tmp/ios/align_"+param.rawBFile+".mp4", startB, startB+gap)
+}
+
 func calculateNCCByHistogram(histogramA, histogramB Histogram) float64 {
 	meanA := histogramA.mean() //calculateMean(histogramA)
 	meanB := histogramB.mean()
@@ -867,8 +882,8 @@ func alignTestF() {
 
 func CommTest() {
 	//var sigma = 1.0
-	//alignTestA()
-	alignTestB()
+	alignTestA()
+	//alignTestB()
 	//alignTestC()
 	//alignTestD()
 	//alignTestE()
@@ -1494,48 +1509,43 @@ func OverlayOneFrameFromStart() {
 	var descriptorSideSizeAtZeroLevel = 32
 	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
 	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
-	blockGradientA, curFrameA := avgBlockGradientFromVideo(width, height, descriptorSideSizeAtZeroLevel, videoA)
-	blockGradientB, curFrameB := avgBlockGradientFromVideo(width, height, descriptorSideSizeAtZeroLevel, videoB)
+
+	frameA, frameB := gocv.NewMat(), gocv.NewMat()
+	videoA.Read(&frameA)
+	videoB.Read(&frameB)
+	grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
+	grayFrameAPre, grayFrameBPre := gocv.NewMat(), gocv.NewMat()
+
+	gocv.CvtColor(frameA, &grayFrameAPre, gocv.ColorRGBToGray)
+	gocv.CvtColor(frameB, &grayFrameBPre, gocv.ColorRGBToGray)
+
+	gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+	gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+
+	blockGradientA := avgBlockGradientFromVideo(width, height, grayFrameAPre, grayFrameA, descriptorSideSizeAtZeroLevel)
+	blockGradientB := avgBlockGradientFromVideo(width, height, grayFrameBPre, grayFrameB, descriptorSideSizeAtZeroLevel)
 	var wtls [3][][]float64
 	for i := 0; i < 3; i++ {
 		wtls[i] = wtlAtOneLevel(blockGradientA[i], blockGradientB[i], weightsWithDistance[i])
 	}
 
 	wwtl := combinedPixelWt(width, height, descriptorSideSizeAtZeroLevel, wtls)
-	gradientMagnitude := computeG(*curFrameB)
-	img := overlay(*curFrameA, wwtl, gradientMagnitude)
+	gradientMagnitude := computeG(grayFrameB)
+	img := overlay(grayFrameA, wwtl, gradientMagnitude)
 	file, _ := os.Create(fmt.Sprintf("tmp/ios/cpu_one_frame_overlay_at_once.png"))
 	_ = png.Encode(file, img)
 	_ = file.Close()
 }
 
-func avgBlockGradientFromVideo(width, height int, descriptorSizeLevel0 int, video *gocv.VideoCapture) (blockGradients [3][][]Histogram, curFrame *gocv.Mat) {
-
-	var framePre = gocv.NewMat()
-	var frame = gocv.NewMat()
-	video.Read(&framePre)
-	video.Read(&frame)
-	if ok := video.Read(&frame); !ok || frame.Empty() {
-		fmt.Println("Error reading video")
-		frame.Close()
-		framePre.Close()
-		return
-	}
-
-	var grayFrameA = gocv.NewMat()
-	var grayFrameB = gocv.NewMat()
-	gocv.CvtColor(framePre, &grayFrameA, gocv.ColorRGBToGray)
-	gocv.CvtColor(frame, &grayFrameB, gocv.ColorRGBToGray)
-	frame.Close()
-	framePre.Close()
+func avgBlockGradientFromVideo(width, height int, frameGrayPre, grayFrame gocv.Mat, descriptorSizeLevel0 int) (blockGradients [3][][]Histogram) {
 
 	gradX := gocv.NewMat()
 	gradY := gocv.NewMat()
 	gradT := gocv.NewMat()
 
-	gocv.Sobel(grayFrameA, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
-	gocv.Sobel(grayFrameA, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
-	gocv.AbsDiff(grayFrameA, grayFrameB, &gradT)
+	gocv.Sobel(grayFrame, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(grayFrame, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+	gocv.AbsDiff(frameGrayPre, grayFrame, &gradT)
 
 	for i := 0; i < 3; i++ {
 		blockSize := (descriptorSizeLevel0 << i) / Cell_M / Cell_m
@@ -1556,9 +1566,6 @@ func avgBlockGradientFromVideo(width, height int, descriptorSizeLevel0 int, vide
 	gradY.Close()
 	gradT.Close()
 
-	grayFrameB.Close()
-	//grayFrameA.Close()
-	curFrame = &grayFrameA
 	return
 }
 
@@ -1601,4 +1608,79 @@ func combinedPixelWt(width, height, descriptorSide int, wtls [3][][]float64) [][
 	}
 
 	return normalizeImage(resultCombined)
+}
+
+func FinalFantasy() {
+	now := time.Now()
+	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
+	if err != nil {
+		panic(err)
+	}
+	var descriptorSideSizeAtZeroLevel = 32
+	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
+	fps := videoA.Get(gocv.VideoCaptureFPS)
+	fmt.Println("fps:", fps, param.alignedAFile, param.alignedBFile)
+	videoWriter, _ := gocv.VideoWriterFile(
+		"tmp/ios/overlay_result.mp4", // 输出视频文件
+		"mp4v",                       // 编码格式
+		fps,                          // FPS
+		int(width),                   // 视频宽度
+		int(height),                  // 视频高度
+		true)                         // 是否彩色
+	defer videoWriter.Close()
+	var counter = 0
+	var preFrameA *gocv.Mat = nil
+	var preFrameB *gocv.Mat = nil
+	for {
+		var frameA = gocv.NewMat()
+		var frameB = gocv.NewMat()
+		if ok := videoA.Read(&frameA); !ok || frameA.Empty() {
+			frameA.Close()
+			break
+		}
+		if ok := videoB.Read(&frameB); !ok || frameB.Empty() {
+			videoB.Close()
+			break
+		}
+
+		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
+		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+		frameA.Close()
+		frameB.Close()
+
+		if preFrameA == nil || preFrameB == nil {
+			preFrameA = &grayFrameA
+			preFrameB = &grayFrameB
+			fmt.Println("start get first frame")
+			continue
+		}
+
+		blockGradientA := avgBlockGradientFromVideo(width, height, *preFrameA, grayFrameA, descriptorSideSizeAtZeroLevel)
+		blockGradientB := avgBlockGradientFromVideo(width, height, *preFrameB, grayFrameB, descriptorSideSizeAtZeroLevel)
+
+		var wtls [3][][]float64
+		for i := 0; i < 3; i++ {
+			wtls[i] = wtlAtOneLevel(blockGradientA[i], blockGradientB[i], weightsWithDistance[i])
+		}
+
+		wwtl := combinedPixelWt(width, height, descriptorSideSizeAtZeroLevel, wtls)
+		gradientMagnitude := computeG(grayFrameB)
+		img := overlay(grayFrameA, wwtl, gradientMagnitude)
+		mat, err := gocv.ImageToMatRGB(img)
+		if err != nil {
+			panic(err)
+		}
+		_ = videoWriter.Write(mat)
+
+		mat.Close()
+		preFrameA.Close()
+		preFrameB.Close()
+		preFrameA = &grayFrameA
+		preFrameB = &grayFrameB
+		counter++
+		fmt.Println("finish frame:", counter)
+	}
+	fmt.Println("time used:", time.Now().Sub(now))
 }

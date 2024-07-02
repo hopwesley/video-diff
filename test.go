@@ -165,6 +165,9 @@ func testRun(_ *cobra.Command, _ []string) {
 
 		fmt.Println("时长：", time.Now().UnixMilli()-now)
 		return
+	case 33:
+		AlignVideoFromStart()
+		return
 	case 21:
 		CommTest()
 		return
@@ -257,6 +260,9 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 31:
 		OverlayOneFrameFromStart()
+		return
+	case 32:
+		FinalFantasy()
 		return
 	}
 }
