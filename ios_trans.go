@@ -1509,15 +1509,26 @@ func OverlayOneFrameFromStart() {
 	var descriptorSideSizeAtZeroLevel = 32
 	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
 	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
-
+	var counter = 0
+	//for {
+	//	counter++
 	frameA, frameB := gocv.NewMat(), gocv.NewMat()
-	videoA.Read(&frameA)
+	ok := videoA.Read(&frameA)
+	if !ok || frameA.Empty() {
+		return
+	}
 	videoB.Read(&frameB)
 	grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
 	grayFrameAPre, grayFrameBPre := gocv.NewMat(), gocv.NewMat()
 
 	gocv.CvtColor(frameA, &grayFrameAPre, gocv.ColorRGBToGray)
 	gocv.CvtColor(frameB, &grayFrameBPre, gocv.ColorRGBToGray)
+
+	//__saveImg(grayFrameAPre, "tmp/ios/overlays/cpu_one_frame_overlay_at_once_a.png")
+	//__saveImg(grayFrameBPre, "tmp/ios/overlays/cpu_one_frame_overlay_at_once_b.png")
+
+	videoA.Read(&frameA)
+	videoB.Read(&frameB)
 
 	gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
 	gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
@@ -1532,9 +1543,10 @@ func OverlayOneFrameFromStart() {
 	wwtl := combinedPixelWt(width, height, descriptorSideSizeAtZeroLevel, wtls)
 	gradientMagnitude := computeG(grayFrameB)
 	img := overlay(grayFrameA, wwtl, gradientMagnitude)
-	file, _ := os.Create(fmt.Sprintf("tmp/ios/cpu_one_frame_overlay_at_once.png"))
+	file, _ := os.Create(fmt.Sprintf("tmp/ios/overlays/cpu_one_frame_overlay_at_once_%d.png", counter))
 	_ = png.Encode(file, img)
 	_ = file.Close()
+	//}
 }
 
 func avgBlockGradientFromVideo(width, height int, frameGrayPre, grayFrame gocv.Mat, descriptorSizeLevel0 int) (blockGradients [3][][]Histogram) {

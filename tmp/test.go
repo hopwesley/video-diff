@@ -84,7 +84,7 @@ func normalizedCrossCorrelation(AQ, BQ []Histogram) ([]float64, float64) {
 	return correlations, maxCorr
 }
 
-func main() {
+func main_2() {
 	// 示例 AQ 和 BQ 的初始化
 	var AQ = []Histogram{
 		{1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
@@ -105,4 +105,44 @@ func main() {
 	}
 	a, b := normalizedCrossCorrelation(AQ, BQ)
 	fmt.Printf("%v:%v\n", a, b)
+}
+
+// Point 结构体定义一个点
+type Point struct {
+	X float64
+	Y float64
+}
+
+// gaussianWeight 计算两点之间的高斯权重
+func gaussianWeight(center, point Point, sigma float64) float64 {
+	// 计算两点之间的欧氏距离
+	distance := math.Sqrt((point.X-center.X)*(point.X-center.X) + (point.Y-center.Y)*(point.Y-center.Y))
+	//fmt.Println(distance)
+	// 根据高斯公式计算权重
+	x := -((distance * distance) / (2 * sigma * sigma))
+	return math.Exp(x)
+}
+
+func main() {
+	center := Point{X: 16, Y: 16}
+	blockCenter := Point{X: 2, Y: 2}
+	sigma := 4.0
+	weight := gaussianWeight(center, blockCenter, sigma)
+	fmt.Printf("1----The Gaussian weight for the block is: %f\n", weight)
+
+	center = Point{X: 32, Y: 32}
+	blockCenter = Point{X: 4, Y: 4}
+	sigma = 8.0
+	weight = gaussianWeight(center, blockCenter, sigma)
+	fmt.Printf("2-----The Gaussian weight for the block is: %f\n", weight)
+
+	center = Point{X: 32, Y: 32}
+	blockCenter = Point{X: 4, Y: 4}
+	sigma = 4.0
+	weight = gaussianWeight(center, blockCenter, sigma)
+	fmt.Printf("4-----The Gaussian weight for the block is: %f\n", weight)
+
+	sigma = 16.0
+	weight = gaussianWeight(center, blockCenter, sigma)
+	fmt.Printf("3-----The Gaussian weight for the block is: %f\n", weight)
 }

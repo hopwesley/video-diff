@@ -165,9 +165,6 @@ func testRun(_ *cobra.Command, _ []string) {
 
 		fmt.Println("时长：", time.Now().UnixMilli()-now)
 		return
-	case 33:
-		AlignVideoFromStart()
-		return
 	case 21:
 		CommTest()
 		return
@@ -238,9 +235,10 @@ func testRun(_ *cobra.Command, _ []string) {
 
 	case 28:
 		var S_0 = 32
-		calculateDistances(S_0, Cell_M, Cell_m, 2)
-		calculateDistances(S_0*2, Cell_M, Cell_m, 2)
-		calculateDistances(S_0*4, Cell_M, Cell_m, 2)
+		var sigma = float64(S_0 / Cell_M / Cell_m)
+		calculateDistances(S_0, Cell_M, Cell_m, sigma)   //float64(S_0/4))
+		calculateDistances(S_0*2, Cell_M, Cell_m, sigma) // float64(S_0/2))
+		calculateDistances(S_0*4, Cell_M, Cell_m, sigma) //float64(S_0))
 		return
 
 	case 29:
@@ -263,6 +261,9 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 32:
 		FinalFantasy()
+		return
+	case 33:
+		AlignVideoFromStart()
 		return
 	}
 }
@@ -451,11 +452,21 @@ func cellGradient(cellLeftTop, roiCenter Point, cellSide int, sigma float64, gra
 	return histogram
 }
 
-func GaussianKernel2D(a, mua Point, sigma float64) float64 {
-	// 计算高斯函数的分子部分
-	numerator := math.Exp(-((a.X-mua.X)*(a.X-mua.X) + (a.Y-mua.Y)*(a.Y-mua.Y)) / (2 * sigma * sigma))
-	// 计算高斯函数的分母部分，这里省略了，因为通常用于权重计算，常数分母可以不考虑
-	return numerator
+//func GaussianKernel2D(a, mua Point, sigma float64) float64 {
+//	// 计算高斯函数的分子部分
+//	numerator := math.Exp(-((a.X-mua.X)*(a.X-mua.X) + (a.Y-mua.Y)*(a.Y-mua.Y)) / (2 * sigma * sigma))
+//	// 计算高斯函数的分母部分，这里省略了，因为通常用于权重计算，常数分母可以不考虑
+//	return numerator
+//}
+
+func GaussianKernel2D(point, center Point, sigma float64) float64 {
+	// 计算两点之间的欧氏距离
+	distance := math.Sqrt((point.X-center.X)*(point.X-center.X) + (point.Y-center.Y)*(point.Y-center.Y))
+	//fmt.Println(distance)
+	// 根据高斯公式计算权重
+	x := -((distance * distance) / (2 * sigma * sigma))
+	//fmt.Println("x:", x)
+	return math.Exp(x)
 }
 
 func roiGradient(grayFrame gocv.Mat, roiCenter Point, roiSide int) []float64 {
