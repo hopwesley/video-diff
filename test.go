@@ -151,7 +151,8 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 19:
 		S_0 := 32
-		AverageGradientOfBlock(S_0)
+		AverageGradientOfBlock(S_0, param.alignedAFile)
+		AverageGradientOfBlock(S_0, param.alignedAFile)
 		return
 	case 20:
 		S_0 := 32
@@ -234,9 +235,9 @@ func testRun(_ *cobra.Command, _ []string) {
 
 	case 28:
 		var S_0 = 32
-		calculateDistances(S_0, Cell_M, Cell_m, 1)
-		calculateDistances(S_0*2, Cell_M, Cell_m, 1)
-		calculateDistances(S_0*4, Cell_M, Cell_m, 1)
+		calculateDistances(S_0, Cell_M, Cell_m, 2)
+		calculateDistances(S_0*2, Cell_M, Cell_m, 2)
+		calculateDistances(S_0*4, Cell_M, Cell_m, 2)
 		return
 
 	case 29:
@@ -253,6 +254,9 @@ func testRun(_ *cobra.Command, _ []string) {
 
 	case 30:
 		OverlayForOneFrame()
+		return
+	case 31:
+		OverlayOneFrameFromStart()
 		return
 	}
 }
@@ -857,9 +861,9 @@ func linearInterpolation(colorA, colorB color.RGBA, factor float64) color.RGBA {
 
 func fc(score float64) color.RGBA {
 	// 确保分数在0和1之间
-	//clampedScore := math.Max(0, math.Min(score, 1))
+	//score = math.Max(0, math.Min(score, 1))
 	if score > 1 || score < 0 {
-		panic("score")
+		panic(fmt.Sprintf("invalid score:%.2f", score))
 	}
 
 	// 定义颜色值

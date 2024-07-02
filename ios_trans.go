@@ -236,9 +236,9 @@ func calculateDistance(h1, h2 Histogram) float64 {
 	return h1.dotProduct(h2) / (h1.l2Norm() * h2.l2Norm())
 }
 
-func AverageGradientOfBlock(S_0 int) {
+func AverageGradientOfBlock(S_0 int, file string) {
 	blockSize := S_0 / Cell_M / Cell_m
-	read2FrameFromSameVideo(param.rawAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+	read2FrameFromSameVideo(file, func(w, h float64, a, b, x, y, t *gocv.Mat) {
 
 		grayFloat, _ := matToFloatArray(*x)
 		saveJson("tmp/ios/cpu_gradientXBuffer.json", grayFloat)
@@ -254,10 +254,10 @@ func AverageGradientOfBlock(S_0 int) {
 		width, height := int(w), int(h)
 		var numberOfX = (width + blockSize - 1) / blockSize
 		var numberOfY = (height + blockSize - 1) / blockSize
-		var blockGradient = make([][][10]float64, numberOfY)
+		var blockGradient = make([][]Histogram, numberOfY)
 		var frameHistogram Histogram
 		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
-			blockGradient[rowIdx] = make([][10]float64, numberOfX)
+			blockGradient[rowIdx] = make([]Histogram, numberOfX)
 			for colIdx := 0; colIdx < numberOfX; colIdx++ {
 				hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
 				blockGradient[rowIdx][colIdx] = hg
@@ -1426,17 +1426,13 @@ func OverlayForOneFrame() {
 	vA, vB, _ := readFile(param.alignedAFile, param.alignedBFile)
 	var frameA = gocv.NewMat()
 	var frameB = gocv.NewMat()
-	var frameB2 = gocv.NewMat()
 	vA.Read(&frameA)
 	vB.Read(&frameB)
-	vB.Read(&frameB2)
 
 	var grayFrameA = gocv.NewMat()
 	var grayFrameB = gocv.NewMat()
-	var grayFrameB2 = gocv.NewMat()
 	gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
 	gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
-	gocv.CvtColor(frameB2, &grayFrameB2, gocv.ColorRGBToGray)
 	frameA.Close()
 	frameB.Close()
 	gradientMagnitude := computeG(grayFrameB)
@@ -1490,18 +1486,92 @@ func computeGWithT(grayFrameB, grayFrameB2 gocv.Mat) [][]float64 {
 	return gradientMagnitude
 }
 
-func wtlOfOnFrameByWeights(blockGradientA, blockGradientB [][]Histogram, weights [][]float64) [][]float64 {
+func OverlayOneFrameFromStart() {
+	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
+	if err != nil {
+		panic(err)
+	}
+	var descriptorSideSizeAtZeroLevel = 32
+	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
+	blockGradientA, curFrameA := avgBlockGradientFromVideo(width, height, descriptorSideSizeAtZeroLevel, videoA)
+	blockGradientB, curFrameB := avgBlockGradientFromVideo(width, height, descriptorSideSizeAtZeroLevel, videoB)
+	var wtls [3][][]float64
+	for i := 0; i < 3; i++ {
+		wtls[i] = wtlAtOneLevel(blockGradientA[i], blockGradientB[i], weightsWithDistance[i])
+	}
+
+	wwtl := combinedPixelWt(width, height, descriptorSideSizeAtZeroLevel, wtls)
+	gradientMagnitude := computeG(*curFrameB)
+	img := overlay(*curFrameA, wwtl, gradientMagnitude)
+	file, _ := os.Create(fmt.Sprintf("tmp/ios/cpu_one_frame_overlay_at_once.png"))
+	_ = png.Encode(file, img)
+	_ = file.Close()
+}
+
+func avgBlockGradientFromVideo(width, height int, descriptorSizeLevel0 int, video *gocv.VideoCapture) (blockGradients [3][][]Histogram, curFrame *gocv.Mat) {
+
+	var framePre = gocv.NewMat()
+	var frame = gocv.NewMat()
+	video.Read(&framePre)
+	video.Read(&frame)
+	if ok := video.Read(&frame); !ok || frame.Empty() {
+		fmt.Println("Error reading video")
+		frame.Close()
+		framePre.Close()
+		return
+	}
+
+	var grayFrameA = gocv.NewMat()
+	var grayFrameB = gocv.NewMat()
+	gocv.CvtColor(framePre, &grayFrameA, gocv.ColorRGBToGray)
+	gocv.CvtColor(frame, &grayFrameB, gocv.ColorRGBToGray)
+	frame.Close()
+	framePre.Close()
+
+	gradX := gocv.NewMat()
+	gradY := gocv.NewMat()
+	gradT := gocv.NewMat()
+
+	gocv.Sobel(grayFrameA, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(grayFrameA, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+	gocv.AbsDiff(grayFrameA, grayFrameB, &gradT)
+
+	for i := 0; i < 3; i++ {
+		blockSize := (descriptorSizeLevel0 << i) / Cell_M / Cell_m
+		var numberOfX = (width + blockSize - 1) / blockSize
+		var numberOfY = (height + blockSize - 1) / blockSize
+		var block = make([][]Histogram, numberOfY)
+		for rowIdx := 0; rowIdx < numberOfY; rowIdx++ {
+			block[rowIdx] = make([]Histogram, numberOfX)
+			for colIdx := 0; colIdx < numberOfX; colIdx++ {
+				hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, &gradX, &gradY, &gradT)
+				block[rowIdx][colIdx] = hg
+			}
+		}
+		blockGradients[i] = block
+	}
+
+	gradX.Close()
+	gradY.Close()
+	gradT.Close()
+
+	grayFrameB.Close()
+	//grayFrameA.Close()
+	curFrame = &grayFrameA
+	return
+}
+
+func wtlAtOneLevel(blockGradientA, blockGradientB [][]Histogram, weights [][]float64) [][]float64 {
 	height := len(blockGradientA)
 	width := len(blockGradientA[0])
 
 	blockNumOfOneRoi := Cell_M * Cell_m
 	roiNumX := width - blockNumOfOneRoi + 1
 	roiNumY := height - blockNumOfOneRoi + 1
-
 	descriptorA := make([][][Cell_M * Cell_M]Histogram, roiNumY)
 	descriptorB := make([][][Cell_M * Cell_M]Histogram, roiNumY)
 	wtlOfOneFrame := make([][]float64, roiNumY)
-
 	for i := 0; i < roiNumY; i++ {
 		wtlOfOneFrame[i] = make([]float64, roiNumX)
 		descriptorB[i] = make([][Cell_M * Cell_M]Histogram, roiNumX)
@@ -1512,5 +1582,23 @@ func wtlOfOnFrameByWeights(blockGradientA, blockGradientB [][]Histogram, weights
 		}
 	}
 
-	return wtlOfOneFrame
+	return normalizeImage(wtlOfOneFrame)
+}
+
+func combinedPixelWt(width, height, descriptorSide int, wtls [3][][]float64) [][]float64 {
+	resultCombined := make([][]float64, height)
+	sideZero := descriptorSide
+	sideOne := descriptorSide << 1
+	sideTwo := descriptorSide << 2
+	for y := 0; y < height; y++ {
+		resultCombined[y] = make([]float64, width)
+		for x := 0; x < width; x++ {
+			pixelAtZero := bilinearInterpolate2(float64(x)/float64(sideZero), float64(y)/float64(sideZero), wtls[0], width, height)
+			pixelAtOne := bilinearInterpolate2(float64(x)/float64(sideOne), float64(y)/float64(sideOne), wtls[1], width, height)
+			pixelAtTwo := bilinearInterpolate2(float64(x)/float64(sideTwo), float64(y)/float64(sideTwo), wtls[2], width, height)
+			resultCombined[y][x] = pixelAtZero + 2*pixelAtOne + 4*pixelAtTwo
+		}
+	}
+
+	return normalizeImage(resultCombined)
 }

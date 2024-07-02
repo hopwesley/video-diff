@@ -477,12 +477,12 @@ func gradientToImg(fileName string) {
 }
 
 func histogramToImg(file string) {
-	var data [][][10]float64
+	var data [][]Histogram
 	_ = readJson(file, &data)
 	__histogramToImg(data, file)
 }
 
-func __histogramToImg(data [][][10]float64, file string) {
+func __histogramToImg(data [][]Histogram, file string) {
 	var imgData [][]uint8
 	var imgDataTmp [][]float64
 
