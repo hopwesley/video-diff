@@ -237,7 +237,7 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 28:
 		var S_0 = 32
 		//var sigma = float64(S_0 / Cell_M / Cell_m)
-		var sigma = float64(2)
+		var sigma = float64(32)
 		calculateDistances(S_0, Cell_M, Cell_m, sigma)
 		calculateDistances(S_0*2, Cell_M, Cell_m, sigma)
 		calculateDistances(S_0*4, Cell_M, Cell_m, sigma)
@@ -275,7 +275,23 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 36:
 		var baseSize = 32
-		ComputeWeightedDescriptor(baseSize, 2, weightsWithDistance[0], param.alignedAFile)
+		ComputeWeightedDescriptor(baseSize, weightsWithDistance[0], param.alignedAFile)
+		ComputeWeightedDescriptor(baseSize<<1, weightsWithDistance[1], param.alignedAFile)
+		ComputeWeightedDescriptor(baseSize<<2, weightsWithDistance[2], param.alignedAFile)
+		return
+	case 37:
+		var S_0 = 32
+		BiLinearWeightedDescriptor(S_0, weightsWithDistance[0])
+		BiLinearWeightedDescriptor(S_0<<1, weightsWithDistance[1])
+		BiLinearWeightedDescriptor(S_0<<2, weightsWithDistance[2])
+		return
+
+	case 38:
+		WtlFromBiLinearFullMap(0)
+		return
+
+	case 39:
+		WtlMoreTry()
 		return
 	}
 }

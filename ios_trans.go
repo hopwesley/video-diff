@@ -1876,9 +1876,9 @@ func FilteredVideoDiff2() {
 	fmt.Println("time used:", time.Now().Sub(now))
 }
 
-func ComputeWeightedDescriptor(S_0, descriptorCenterStepSizeInBlockUnit int, weights [][]float64, file string) {
+func ComputeWeightedDescriptor(S_0 int, weights [][]float64, file string) (normalizedDescriptor [][][]float64) {
 	blockSize := S_0 / Cell_M / Cell_m
-	var step = descriptorCenterStepSizeInBlockUnit
+
 	read2FrameFromSameVideo(file, func(w, h float64, a, b, x, y, t *gocv.Mat) {
 		width, height := int(w), int(h)
 
@@ -1892,7 +1892,7 @@ func ComputeWeightedDescriptor(S_0, descriptorCenterStepSizeInBlockUnit int, wei
 		var descriptorCols = colsOfBlock - blockNumOneDescriptor + 1
 
 		descriptor := make([][][Cell_M * Cell_M]Histogram, descriptorRows)
-		normalizedDescriptor := make([][][]float64, descriptorRows)
+		normalizedDescriptor = make([][][]float64, descriptorRows)
 		for i := 0; i < descriptorRows; i++ {
 			descriptor[i] = make([][Cell_M * Cell_M]Histogram, descriptorCols)
 			normalizedDescriptor[i] = make([][]float64, descriptorCols)
@@ -1907,13 +1907,13 @@ func ComputeWeightedDescriptor(S_0, descriptorCenterStepSizeInBlockUnit int, wei
 			}
 		}
 
-		saveJson(fmt.Sprintf("tmp/ios/cpu_gradients_one_frame_level_%d.json", S_0), blockGradient)
-		__histogramToImg(blockGradient, fmt.Sprintf("tmp/ios/cpu_gradients_one_frame_level_%d.json.png", S_0))
+		saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_gradients_one_frame_level_%d.json", S_0), blockGradient)
+		__histogramToImg(blockGradient, fmt.Sprintf("tmp/ios/overlays/cpu_gradients_one_frame_level_%d.json.png", S_0))
 
 		for rowIdx := 0; rowIdx < descriptorRows; rowIdx++ {
 			for colIdx := 0; colIdx < descriptorCols; colIdx++ {
-				blockGradientStartRowIdx := rowIdx * step
-				blockGradientStartColIdx := colIdx * step
+				blockGradientStartRowIdx := rowIdx
+				blockGradientStartColIdx := colIdx
 
 				for wRowIdx := 0; wRowIdx < blockNumOneDescriptor; wRowIdx++ {
 					for wColIdx := 0; wColIdx < blockNumOneDescriptor; wColIdx++ {
@@ -1933,30 +1933,27 @@ func ComputeWeightedDescriptor(S_0, descriptorCenterStepSizeInBlockUnit int, wei
 			}
 		}
 
-		saveJson(fmt.Sprintf("tmp/ios/cpu_descriptors_one_frame_level_%d.json", S_0), descriptor)
-		saveJson(fmt.Sprintf("tmp/ios/cpu_descriptors_one_frame_normalized_level_%d.json", S_0), normalizedDescriptor)
-		__histogramToImgFloat(normalizedDescriptor, fmt.Sprintf("tmp/ios/cpu_descriptors_one_frame_normalized_level_%d.json.png", S_0))
+		saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_descriptors_one_frame_level_%d.json", S_0), descriptor)
+		saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_descriptors_one_frame_normalized_level_%d.json", S_0), normalizedDescriptor)
+		__histogramToImgFloat(normalizedDescriptor, fmt.Sprintf("tmp/ios/overlays/cpu_descriptors_one_frame_normalized_level_%d.json.png", S_0))
 	})
+	return
 }
 
 // normalizeDescriptor 归一化描述符，对整个描述符进行L2归一化
 func normalizeDescriptor(descriptor [Cell_M * Cell_M]Histogram) []float64 {
 	descriptorLength := Cell_M * Cell_M * HistogramSize
 
-	// 将描述符展平成一个向量
+	l2Norm := 0.0
 	flatDescriptor := make([]float64, descriptorLength)
 	index := 0
 	for i := 0; i < Cell_M*Cell_M; i++ {
 		for j := 0; j < HistogramSize; j++ {
-			flatDescriptor[index] = descriptor[i][j]
+			var value = descriptor[i][j]
+			flatDescriptor[index] = value
+			l2Norm += value * value
 			index++
 		}
-	}
-
-	// 计算整个描述符的L2范数
-	l2Norm := 0.0
-	for _, value := range flatDescriptor {
-		l2Norm += value * value
 	}
 	l2Norm = math.Sqrt(l2Norm) + 1
 
@@ -1964,6 +1961,133 @@ func normalizeDescriptor(descriptor [Cell_M * Cell_M]Histogram) []float64 {
 	for i := range flatDescriptor {
 		flatDescriptor[i] /= l2Norm
 	}
-
 	return flatDescriptor
+}
+
+func BiLinearWeightedDescriptor(S_0 int, weights [][]float64) [][]float64 {
+
+	videoA, _ := gocv.VideoCaptureFile(param.alignedAFile)
+
+	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
+	descOfA := ComputeWeightedDescriptor(S_0, weights, param.alignedAFile)
+	descOfB := ComputeWeightedDescriptor(S_0, weights, param.alignedBFile)
+
+	descRowLen := len(descOfA)
+	descColLen := len(descOfA[0])
+	wtl := make([][]float64, descRowLen)
+	for rowIdx := 0; rowIdx < descRowLen; rowIdx++ {
+		wtl[rowIdx] = make([]float64, descColLen)
+		for colIdx := 0; colIdx < descColLen; colIdx++ {
+			wtl[rowIdx][colIdx] = calculateEuclideanDistance(descOfA[rowIdx][colIdx], descOfB[rowIdx][colIdx])
+		}
+	}
+	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_one_frame_level_%d.json", S_0), wtl)
+
+	//wtlFullImg := applyBiLinearInterpolationToGrid(wtl, width, height, S_0)
+	wtlFullImg := applyBiLinearInterpolationToFullFrame(wtl, width, height, S_0)
+
+	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_full_one_frame_level_%d.json", S_0), wtlFullImg)
+
+	__saveNormalizedData(normalizeImage(wtl), fmt.Sprintf("tmp/ios/overlays/cpu_wtl_one_frame_level_%d.json.png", S_0))
+	__saveNormalizedData(normalizeImage(wtlFullImg), fmt.Sprintf("tmp/ios/overlays/cpu_wtl_full_one_frame_level_%d.json.png", S_0))
+
+	return wtlFullImg
+
+}
+
+func calculateEuclideanDistance(descriptorA, descriptorB []float64) float64 {
+	sumSquares := 0.0
+	for i := 0; i < len(descriptorA); i++ {
+		diff := descriptorA[i] - descriptorB[i]
+		sumSquares += diff * diff
+	}
+	return math.Sqrt(sumSquares)
+}
+
+func biLinearInterpolate(q11, q12, q21, q22, x1, x2, y1, y2, x, y float64) float64 {
+	denom := (x2 - x1) * (y2 - y1)
+	intermed := q11*(x2-x)*(y2-y) + q21*(x-x1)*(y2-y) + q12*(x2-x)*(y-y1) + q22*(x-x1)*(y-y1)
+	return intermed / denom
+}
+
+func applyBiLinearInterpolationToGrid(wtl [][]float64, width, height, S_0 int) [][]float64 {
+	fullMap := make([][]float64, height)
+	for i := range fullMap {
+		fullMap[i] = make([]float64, width)
+	}
+	blockSize := S_0 / Cell_M / Cell_m
+
+	// Assuming wtl grid aligns with blockSize
+	for i := 0; i < len(wtl)-1; i++ {
+		for j := 0; j < len(wtl[0])-1; j++ {
+			x1, x2 := j*blockSize, (j+1)*blockSize
+			y1, y2 := i*blockSize, (i+1)*blockSize
+			for x := x1; x < x2; x++ {
+				for y := y1; y < y2; y++ {
+					fullMap[y][x] = biLinearInterpolate(
+						wtl[i][j], wtl[i][j+1], wtl[i+1][j], wtl[i+1][j+1],
+						float64(x1), float64(x2), float64(y1), float64(y2),
+						float64(x), float64(y),
+					)
+				}
+			}
+		}
+	}
+
+	return fullMap
+}
+
+func applyBiLinearInterpolationToFullFrame(wtl [][]float64, width, height, S_0 int) [][]float64 {
+	fullMap := make([][]float64, height)
+	for i := range fullMap {
+		fullMap[i] = make([]float64, width)
+	}
+	blockSize := S_0 / Cell_M / Cell_m
+	shift := S_0 / 2
+	for i := 0; i < len(wtl)-1; i++ {
+		for j := 0; j < len(wtl[0])-1; j++ {
+			x1, x2 := j*blockSize+shift, (j+1)*blockSize+shift
+			y1, y2 := i*blockSize+shift, (i+1)*blockSize+shift
+			for x := x1; x < x2; x++ {
+				for y := y1; y < y2; y++ {
+					fullMap[y][x] = biLinearInterpolate(
+						wtl[i][j], wtl[i][j+1], wtl[i+1][j], wtl[i+1][j+1],
+						float64(x1), float64(x2), float64(y1), float64(y2),
+						float64(x), float64(y),
+					)
+				}
+			}
+		}
+	}
+
+	return fullMap
+}
+
+func WtlFromBiLinearFullMap(idx int) {
+
+	var S_0 = 32
+	fullMap32 := BiLinearWeightedDescriptor(S_0, weightsWithDistance[0])
+	fullMap64 := BiLinearWeightedDescriptor(S_0<<1, weightsWithDistance[1])
+	fullMap128 := BiLinearWeightedDescriptor(S_0<<2, weightsWithDistance[2])
+
+	height := len(fullMap32)
+	width := len(fullMap32[0])
+	finalMap := make([][]float64, height)
+	for rowIdx := 0; rowIdx < height; rowIdx++ {
+		finalMap[rowIdx] = make([]float64, width)
+		for colIdx := 0; colIdx < width; colIdx++ {
+			finalMap[rowIdx][colIdx] = fullMap32[rowIdx][colIdx] + 2*fullMap64[rowIdx][colIdx] + 4*fullMap128[rowIdx][colIdx]
+		}
+	}
+	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_full_combined_one_frame_level_%d.json", idx), finalMap)
+	var normalizedMap = normalizeImage(finalMap)
+	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_full_combined_one_frame_level_normalized_%d.json", idx), normalizedMap)
+	__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_full_combined_one_frame_level.json_%d.png", idx))
+}
+
+func WtlMoreTry() {
+	for i := 0; i < 30; i++ {
+		WtlFromBiLinearFullMap(i)
+	}
 }
