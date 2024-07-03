@@ -155,9 +155,6 @@ func read2FrameFromSameVideo(file string, callback frameCallback) {
 	gradX.Close()
 	gradY.Close()
 	gradT.Close()
-
-	grayFrameA.Close()
-	grayFrameB.Close()
 }
 
 func IosQuantizeGradient() {
@@ -1455,50 +1452,6 @@ func OverlayForOneFrame() {
 	_ = file.Close()
 }
 
-func computeGWithT(grayFrameB, grayFrameB2 gocv.Mat) [][]float64 {
-
-	floatInput := gocv.NewMat()
-	floatInput2 := gocv.NewMat()
-	grayFrameB.ConvertToWithParams(&floatInput, gocv.MatTypeCV32F, 1.0/255, 0)   // 注意添加归一化
-	grayFrameB2.ConvertToWithParams(&floatInput2, gocv.MatTypeCV32F, 1.0/255, 0) // 注意添加归一化
-
-	fmt.Println("gray frame b:", grayFrameB.Type(), "float input :", floatInput.Type())
-
-	// 初始化Sobel梯度矩阵
-	gradX := gocv.NewMat()
-	gradY := gocv.NewMat()
-	gradT := gocv.NewMat()
-	gocv.Sobel(floatInput, &gradX, gocv.MatTypeCV32F, 1, 0, 3, 1, 0, gocv.BorderDefault)
-	gocv.Sobel(floatInput, &gradY, gocv.MatTypeCV32F, 0, 1, 3, 1, 0, gocv.BorderDefault)
-	gocv.AbsDiff(floatInput, floatInput2, &gradT)
-	//gradT.ConvertToWithParams(&floatInput, gocv.MatTypeCV32F, 1.0/255, 0) // 注意添加归一化
-
-	floatInput.Close() // 释放转换后的Mat
-
-	// 计算梯度幅值
-	gradientMagnitude := make([][]float64, grayFrameB.Rows())
-	for y := 0; y < grayFrameB.Rows(); y++ {
-		gradientMagnitude[y] = make([]float64, grayFrameB.Cols())
-		for x := 0; x < grayFrameB.Cols(); x++ {
-			gx := gradX.GetFloatAt(y, x)
-			gy := gradY.GetFloatAt(y, x)
-			gt := gradT.GetFloatAt(y, x)
-
-			// 计算梯度的大小并应用alpha值
-			g := math.Sqrt(float64(gx*gx + gy*gy + gt*gt))
-			g = math.Min(1, testTool.alpha*g)
-
-			gradientMagnitude[y][x] = g
-		}
-	}
-
-	// 清理资源
-	gradX.Close()
-	gradY.Close()
-
-	return gradientMagnitude
-}
-
 func OverlayOneFrameFromStart() {
 	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
 	if err != nil {
@@ -2145,7 +2098,8 @@ func WtlOneFrameFromStart() {
 	width, height := 0, 0
 	var S_0 = 32
 	var blockNumOneDescriptor = Cell_M * Cell_m
-
+	var gradientMagnitude [][]float64
+	var grayFrameA *gocv.Mat
 	read2FrameFromSameVideo(param.alignedAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
 		width, height = int(w), int(h)
 		for i := 0; i < 3; i++ {
@@ -2153,6 +2107,7 @@ func WtlOneFrameFromStart() {
 			blockGradient := __getQG(width, height, blockSize, a, b, x, y, t)
 			normalizedDescriptorA[i] = __getDes(blockGradient, blockNumOneDescriptor, weightsWithDistance[i])
 		}
+		grayFrameA = a
 	})
 
 	read2FrameFromSameVideo(param.alignedBFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
@@ -2162,6 +2117,9 @@ func WtlOneFrameFromStart() {
 			blockGradient := __getQG(width, height, blockSize, a, b, x, y, t)
 			normalizedDescriptorB[i] = __getDes(blockGradient, blockNumOneDescriptor, weightsWithDistance[i])
 		}
+
+		gradientMagnitude = computeG(*b)
+		b.Close()
 	})
 
 	var wtls [3][][]float64
@@ -2191,4 +2149,11 @@ func WtlOneFrameFromStart() {
 	var normalizedMap = normalizeImage(finalMap)
 	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json"), normalizedMap)
 	__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json.png"))
+
+	img := overlay(*grayFrameA, normalizedMap, gradientMagnitude)
+
+	file, _ := os.Create(fmt.Sprintf("tmp/ios/overlays/cpu_one_frame_overlay.png"))
+	_ = png.Encode(file, img)
+	_ = file.Close()
+	grayFrameA.Close()
 }

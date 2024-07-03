@@ -237,7 +237,7 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 28:
 		var S_0 = 32
 		//var sigma = float64(S_0 / Cell_M / Cell_m)
-		var sigma = float64(32)
+		var sigma = float64(64)
 		calculateDistances(S_0, Cell_M, Cell_m, sigma)
 		calculateDistances(S_0*2, Cell_M, Cell_m, sigma)
 		calculateDistances(S_0*4, Cell_M, Cell_m, sigma)
@@ -292,6 +292,9 @@ func testRun(_ *cobra.Command, _ []string) {
 
 	case 39:
 		WtlOneFrameFromStart()
+		return
+
+	case 40:
 		return
 	}
 }
