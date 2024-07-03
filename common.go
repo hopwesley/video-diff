@@ -299,7 +299,7 @@ func __saveNormalizedData(data [][]float64, fileName string) bool {
 	return gocv.IMWrite(fileName, img)
 }
 
-func saveGrayDataData(data [][]uint8, fileName string) bool {
+func saveGrayDataToImg(data [][]uint8, fileName string) bool {
 	height := len(data)
 	width := len(data[0])
 	img := gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
@@ -427,7 +427,7 @@ func grayDataToImg(fileName string) {
 	if err != nil {
 		panic(err)
 	}
-	saveGrayDataData(grayValues, fileName+".png")
+	saveGrayDataToImg(grayValues, fileName+".png")
 }
 
 func gradientToImg(fileName string) {
@@ -473,7 +473,7 @@ func gradientToImg(fileName string) {
 			grayValues[y][x] = grayVal
 		}
 	}
-	saveGrayDataData(grayValues, fileName+".png")
+	saveGrayDataToImg(grayValues, fileName+".png")
 }
 
 func histogramToImg(file string) {
@@ -516,5 +516,42 @@ func __histogramToImg(data [][]Histogram, file string) {
 		}
 	}
 
-	saveGrayDataData(imgData, file+".png")
+	saveGrayDataToImg(imgData, file)
+}
+
+func __histogramToImgFloat(data [][][]float64, file string) {
+	var imgData [][]uint8
+	var imgDataTmp [][]float64
+
+	imgDataTmp = make([][]float64, len(data))
+	maxVal, minVal := 0.0, 0.0
+	for row, rowData := range data {
+		imgDataTmp[row] = make([]float64, len(rowData))
+		for col, columnData := range rowData {
+			var sum = 0.0
+			for _, value := range columnData {
+				sum += value
+			}
+			imgDataTmp[row][col] = sum
+
+			if sum > maxVal {
+				maxVal = sum
+			}
+			if sum < minVal {
+				minVal = sum
+			}
+		}
+	}
+
+	imgData = make([][]uint8, len(data))
+	for y, row := range imgDataTmp {
+		imgData[y] = make([]uint8, len(imgDataTmp[0]))
+		for x, val := range row {
+			normalizedVal := (val - minVal) / (maxVal - minVal) // 将值归一化到0到1
+			grayVal := uint8(normalizedVal * 255)               // 将值映射到0到255
+			imgData[y][x] = grayVal
+		}
+	}
+
+	saveGrayDataToImg(imgData, file)
 }

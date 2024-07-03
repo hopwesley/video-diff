@@ -152,7 +152,8 @@ func testRun(_ *cobra.Command, _ []string) {
 	case 19:
 		S_0 := 32
 		AverageGradientOfBlock(S_0, param.alignedAFile)
-		AverageGradientOfBlock(S_0, param.alignedAFile)
+		AverageGradientOfBlock(S_0<<1, param.alignedAFile)
+		AverageGradientOfBlock(S_0<<2, param.alignedAFile)
 		return
 	case 20:
 		S_0 := 32
@@ -235,10 +236,11 @@ func testRun(_ *cobra.Command, _ []string) {
 
 	case 28:
 		var S_0 = 32
-		var sigma = float64(S_0 / Cell_M / Cell_m)
-		calculateDistances(S_0, Cell_M, Cell_m, sigma)   //float64(S_0/4))
-		calculateDistances(S_0*2, Cell_M, Cell_m, sigma) // float64(S_0/2))
-		calculateDistances(S_0*4, Cell_M, Cell_m, sigma) //float64(S_0))
+		//var sigma = float64(S_0 / Cell_M / Cell_m)
+		var sigma = float64(2)
+		calculateDistances(S_0, Cell_M, Cell_m, sigma)
+		calculateDistances(S_0*2, Cell_M, Cell_m, sigma)
+		calculateDistances(S_0*4, Cell_M, Cell_m, sigma)
 		return
 
 	case 29:
@@ -270,6 +272,10 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 	case 35:
 		FilteredVideoDiff2()
+		return
+	case 36:
+		var baseSize = 32
+		ComputeWeightedDescriptor(baseSize, 2, weightsWithDistance[0], param.alignedAFile)
 		return
 	}
 }
@@ -459,19 +465,12 @@ func cellGradient(cellLeftTop, roiCenter Point, cellSide int, sigma float64, gra
 }
 
 func GaussianKernel2D(a, mua Point, sigma float64) float64 {
-	// 计算高斯函数的分子部分
-	numerator := math.Exp(-((a.X-mua.X)*(a.X-mua.X) + (a.Y-mua.Y)*(a.Y-mua.Y)) / (2 * sigma * sigma))
-	// 计算高斯函数的分母部分，这里省略了，因为通常用于权重计算，常数分母可以不考虑
-	return numerator
+	return math.Exp(-((a.X-mua.X)*(a.X-mua.X) + (a.Y-mua.Y)*(a.Y-mua.Y)) / (2 * sigma * sigma))
 }
 
 //func GaussianKernel2D(point, center Point, sigma float64) float64 {
-//	// 计算两点之间的欧氏距离
 //	distance := math.Sqrt((point.X-center.X)*(point.X-center.X) + (point.Y-center.Y)*(point.Y-center.Y))
-//	//fmt.Println(distance)
-//	// 根据高斯公式计算权重
 //	x := -((distance * distance) / (2 * sigma * sigma))
-//	//fmt.Println("x:", x)
 //	return math.Exp(x)
 //}
 

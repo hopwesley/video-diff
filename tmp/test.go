@@ -123,7 +123,7 @@ func gaussianWeight(center, point Point, sigma float64) float64 {
 	return math.Exp(x)
 }
 
-func main() {
+func main_3() {
 	center := Point{X: 16, Y: 16}
 	blockCenter := Point{X: 2, Y: 2}
 	sigma := 4.0
@@ -145,4 +145,54 @@ func main() {
 	sigma = 16.0
 	weight = gaussianWeight(center, blockCenter, sigma)
 	fmt.Printf("3-----The Gaussian weight for the block is: %f\n", weight)
+}
+
+// normalizeDescriptor 归一化描述符，对整个描述符进行L2归一化
+func normalizeDescriptor(descriptor [Cell_M * Cell_M]Histogram) []float64 {
+	descriptorLength := Cell_M * Cell_M * HistogramSize
+
+	// 将描述符展平成一个向量
+	flatDescriptor := make([]float64, descriptorLength)
+	index := 0
+	for i := 0; i < Cell_M*Cell_M; i++ {
+		for j := 0; j < HistogramSize; j++ {
+			flatDescriptor[index] = descriptor[i][j]
+			index++
+		}
+	}
+
+	// 计算整个描述符的L2范数
+	l2Norm := 0.0
+	for _, value := range flatDescriptor {
+		l2Norm += value * value
+	}
+	l2Norm = math.Sqrt(l2Norm) + 1
+
+	// 将每个元素除以L2范数
+	for i := range flatDescriptor {
+		flatDescriptor[i] /= l2Norm
+	}
+
+	return flatDescriptor
+}
+
+const Cell_M = 2
+const HistogramSize = 10
+
+func main() {
+	descriptor := []float64{
+		0, 0.05455454519097731, 3.9081209407780895e-4, 2.8216288185249806e-4, 0.12318445147708071, 0.10148381728251783,
+		0.10148381728251783, 0.12318445147708071, 0.005536713332832687, 0.002158002771660965,
+		0, 0, 0, 0, 0.10489861434058848, 0.10488597657289073, 0.10488597657289073, 0.10489861434058848, 8.742648219579155e-8, 0,
+		0, 0, 0, 0, 0.05534651984989928, 0.053470908821872644, 0.053470908821872644, 0.05534651984989928, 3.5421206136258723e-4, 0,
+		0, 0, 0, 0, 0.057328258429356814, 0.057318960079520205, 0.057318960079520205, 0.057328258429356814, 3.2558949136767424e-4, 5.9191311691711445e-5,
+	}
+
+	// 计算归一化后的向量的和
+	sum := 0.0
+	for _, value := range descriptor {
+		sum += value
+	}
+
+	fmt.Printf("The sum of the normalized descriptor is: %f\n", sum)
 }

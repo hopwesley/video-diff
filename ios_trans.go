@@ -83,7 +83,6 @@ func matToFloatArray(mat gocv.Mat) ([][]float64, error) {
 	rows := mat.Rows()
 	cols := mat.Cols()
 	matType := mat.Type()
-
 	// 创建一个二维浮点数组来存储梯度数据
 	floatArray := make([][]float64, rows)
 	for i := range floatArray {
@@ -240,7 +239,6 @@ func calculateDistance(h1, h2 Histogram) float64 {
 func AverageGradientOfBlock(S_0 int, file string) {
 	blockSize := S_0 / Cell_M / Cell_m
 	read2FrameFromSameVideo(file, func(w, h float64, a, b, x, y, t *gocv.Mat) {
-
 		grayFloat, _ := matToFloatArray(*x)
 		saveJson("tmp/ios/cpu_gradientXBuffer.json", grayFloat)
 		grayFloat, _ = matToFloatArray(*y)
@@ -265,7 +263,7 @@ func AverageGradientOfBlock(S_0 int, file string) {
 				frameHistogram.Add(hg)
 			}
 		}
-		__histogramToImg(blockGradient, "tmp/ios/cpu_block_gradient_.png")
+		__histogramToImg(blockGradient, fmt.Sprintf("tmp/ios/cpu_block_gradient_%d.json.png", S_0))
 		saveJson(fmt.Sprintf("tmp/ios/cpu_block_gradient_%d.json", S_0), blockGradient)
 		saveJson(fmt.Sprintf("tmp/ios/cpu_frame_histogram_%d.json", S_0), frameHistogram)
 	})
@@ -1876,4 +1874,96 @@ func FilteredVideoDiff2() {
 		fmt.Println("finish frame:", counter)
 	}
 	fmt.Println("time used:", time.Now().Sub(now))
+}
+
+func ComputeWeightedDescriptor(S_0, descriptorCenterStepSizeInBlockUnit int, weights [][]float64, file string) {
+	blockSize := S_0 / Cell_M / Cell_m
+	var step = descriptorCenterStepSizeInBlockUnit
+	read2FrameFromSameVideo(file, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+		width, height := int(w), int(h)
+
+		var colsOfBlock = (width + blockSize - 1) / blockSize
+		var rowsOfBlock = (height + blockSize - 1) / blockSize
+
+		var blockGradient = make([][]Histogram, rowsOfBlock)
+		var blockNumOneDescriptor = Cell_M * Cell_m
+
+		var descriptorRows = rowsOfBlock - blockNumOneDescriptor + 1
+		var descriptorCols = colsOfBlock - blockNumOneDescriptor + 1
+
+		descriptor := make([][][Cell_M * Cell_M]Histogram, descriptorRows)
+		normalizedDescriptor := make([][][]float64, descriptorRows)
+		for i := 0; i < descriptorRows; i++ {
+			descriptor[i] = make([][Cell_M * Cell_M]Histogram, descriptorCols)
+			normalizedDescriptor[i] = make([][]float64, descriptorCols)
+		}
+
+		for rowIdx := 0; rowIdx < rowsOfBlock; rowIdx++ {
+			blockGradient[rowIdx] = make([]Histogram, colsOfBlock)
+			for colIdx := 0; colIdx < colsOfBlock; colIdx++ {
+				hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
+				blockGradient[rowIdx][colIdx] = hg
+
+			}
+		}
+
+		saveJson(fmt.Sprintf("tmp/ios/cpu_gradients_one_frame_level_%d.json", S_0), blockGradient)
+		__histogramToImg(blockGradient, fmt.Sprintf("tmp/ios/cpu_gradients_one_frame_level_%d.json.png", S_0))
+
+		for rowIdx := 0; rowIdx < descriptorRows; rowIdx++ {
+			for colIdx := 0; colIdx < descriptorCols; colIdx++ {
+				blockGradientStartRowIdx := rowIdx * step
+				blockGradientStartColIdx := colIdx * step
+
+				for wRowIdx := 0; wRowIdx < blockNumOneDescriptor; wRowIdx++ {
+					for wColIdx := 0; wColIdx < blockNumOneDescriptor; wColIdx++ {
+						weight := weights[wRowIdx][wColIdx]
+						gradient := blockGradient[blockGradientStartRowIdx+wRowIdx][blockGradientStartColIdx+wColIdx]
+						weightedGradient := gradient.Scale(weight)
+						cellIdxInDescriptor := (wRowIdx/Cell_m)*Cell_M + wColIdx/Cell_m
+						descriptor[rowIdx][colIdx][cellIdxInDescriptor].Add(weightedGradient)
+					}
+				}
+			}
+		}
+
+		for rowIdx, rowData := range descriptor {
+			for colIdx, datum := range rowData {
+				normalizedDescriptor[rowIdx][colIdx] = normalizeDescriptor(datum)
+			}
+		}
+
+		saveJson(fmt.Sprintf("tmp/ios/cpu_descriptors_one_frame_level_%d.json", S_0), descriptor)
+		saveJson(fmt.Sprintf("tmp/ios/cpu_descriptors_one_frame_normalized_level_%d.json", S_0), normalizedDescriptor)
+		__histogramToImgFloat(normalizedDescriptor, fmt.Sprintf("tmp/ios/cpu_descriptors_one_frame_normalized_level_%d.json.png", S_0))
+	})
+}
+
+// normalizeDescriptor 归一化描述符，对整个描述符进行L2归一化
+func normalizeDescriptor(descriptor [Cell_M * Cell_M]Histogram) []float64 {
+	descriptorLength := Cell_M * Cell_M * HistogramSize
+
+	// 将描述符展平成一个向量
+	flatDescriptor := make([]float64, descriptorLength)
+	index := 0
+	for i := 0; i < Cell_M*Cell_M; i++ {
+		for j := 0; j < HistogramSize; j++ {
+			flatDescriptor[index] = descriptor[i][j]
+			index++
+		}
+	}
+
+	// 计算整个描述符的L2范数
+	l2Norm := 0.0
+	for _, value := range flatDescriptor {
+		l2Norm += value * value
+	}
+	l2Norm = math.Sqrt(l2Norm) + 1
+
+	// 将每个元素除以L2范数
+	for i := range flatDescriptor {
+		flatDescriptor[i] /= l2Norm
+	}
+
+	return flatDescriptor
 }
