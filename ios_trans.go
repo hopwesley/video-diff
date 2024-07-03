@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"gocv.io/x/gocv"
+	"image"
+	"image/color"
 	"image/png"
 	"math"
 	"os"
@@ -2118,7 +2120,9 @@ func WtlOneFrameFromStart() {
 			normalizedDescriptorB[i] = __getDes(blockGradient, blockNumOneDescriptor, weightsWithDistance[i])
 		}
 
-		gradientMagnitude = computeG(*b)
+		//gradientMagnitude = computeG(*b)
+		gradientMagnitude = computeG2(*b)
+
 		b.Close()
 	})
 
@@ -2150,10 +2154,64 @@ func WtlOneFrameFromStart() {
 	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json"), normalizedMap)
 	__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json.png"))
 
-	img := overlay(*grayFrameA, normalizedMap, gradientMagnitude)
+	//img := overlay(*grayFrameA, normalizedMap, gradientMagnitude)
+	img := overlay2(*grayFrameA, normalizedMap, gradientMagnitude)
 
 	file, _ := os.Create(fmt.Sprintf("tmp/ios/overlays/cpu_one_frame_overlay.png"))
 	_ = png.Encode(file, img)
 	_ = file.Close()
 	grayFrameA.Close()
+}
+
+func computeG2(grayFrameB gocv.Mat) [][]float64 {
+
+	// 初始化Sobel梯度矩阵
+	gradX := gocv.NewMat()
+	gradY := gocv.NewMat()
+
+	gocv.Sobel(grayFrameB, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(grayFrameB, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+
+	maxGradient := math.Sqrt(255*255 + 255*255)
+	gradientMagnitude := make([][]float64, grayFrameB.Rows())
+	for y := 0; y < grayFrameB.Rows(); y++ {
+		gradientMagnitude[y] = make([]float64, grayFrameB.Cols())
+		for x := 0; x < grayFrameB.Cols(); x++ {
+			gx := float64(gradX.GetShortAt(y, x))
+			gy := float64(gradY.GetShortAt(y, x))
+			g := math.Sqrt(gx*gx+gy*gy) / maxGradient
+			g = math.Min(1, testTool.alpha*g) // Apply alpha and cap at 1
+			gradientMagnitude[y][x] = g
+		}
+	}
+	// 清理资源
+	gradX.Close()
+	gradY.Close()
+
+	return gradientMagnitude
+}
+
+func overlay2(frameA gocv.Mat, wtVal, gradientMagnitude [][]float64) image.Image {
+	width := frameA.Cols()
+	height := frameA.Rows()
+	adjustedFrame := adjustContrast(frameA, testTool.betaLow, testTool.betaHigh)
+
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			score := wtVal[y][x]
+			heatMapColor := fc(score)
+			g := gradientMagnitude[y][x]
+			grayValue := adjustedFrame[y][x]
+			//grayValue := float64(frameA.GetUCharAt(y, x)) * 0.5
+			vColor := color.RGBA{
+				R: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.R)),
+				G: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.G)),
+				B: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.B)),
+				A: 255,
+			}
+			img.Set(x, y, vColor)
+		}
+	}
+	return img
 }
