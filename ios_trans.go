@@ -2086,8 +2086,109 @@ func WtlFromBiLinearFullMap(idx int) {
 	__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_full_combined_one_frame_level.json_%d.png", idx))
 }
 
-func WtlMoreTry() {
-	for i := 0; i < 30; i++ {
-		WtlFromBiLinearFullMap(i)
+func __getQG(width, height, blockSize int, a, b, x, y, t *gocv.Mat) (blockGradient [][]Histogram) {
+	var colsOfBlock = (width + blockSize - 1) / blockSize
+	var rowsOfBlock = (height + blockSize - 1) / blockSize
+	blockGradient = make([][]Histogram, rowsOfBlock)
+	for rowIdx := 0; rowIdx < rowsOfBlock; rowIdx++ {
+		blockGradient[rowIdx] = make([]Histogram, colsOfBlock)
+		for colIdx := 0; colIdx < colsOfBlock; colIdx++ {
+			hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
+			blockGradient[rowIdx][colIdx] = hg
+		}
 	}
+
+	return
+}
+func __getDes(blockGradient [][]Histogram, blockNumOneDescriptor int, weights [][]float64) (normalizedDescriptor [][][]float64) {
+	var rowsOfBlock = len(blockGradient)
+	var colsOfBlock = len(blockGradient[0])
+	var descriptorRows = rowsOfBlock - blockNumOneDescriptor + 1
+	var descriptorCols = colsOfBlock - blockNumOneDescriptor + 1
+
+	descriptor := make([][][Cell_M * Cell_M]Histogram, descriptorRows)
+	normalizedDescriptor = make([][][]float64, descriptorRows)
+	for i := 0; i < descriptorRows; i++ {
+		descriptor[i] = make([][Cell_M * Cell_M]Histogram, descriptorCols)
+		normalizedDescriptor[i] = make([][]float64, descriptorCols)
+	}
+
+	for rowIdx := 0; rowIdx < descriptorRows; rowIdx++ {
+		for colIdx := 0; colIdx < descriptorCols; colIdx++ {
+			blockGradientStartRowIdx := rowIdx
+			blockGradientStartColIdx := colIdx
+
+			for wRowIdx := 0; wRowIdx < blockNumOneDescriptor; wRowIdx++ {
+				for wColIdx := 0; wColIdx < blockNumOneDescriptor; wColIdx++ {
+					weight := weights[wRowIdx][wColIdx]
+					gradient := blockGradient[blockGradientStartRowIdx+wRowIdx][blockGradientStartColIdx+wColIdx]
+					weightedGradient := gradient.Scale(weight)
+					cellIdxInDescriptor := (wRowIdx/Cell_m)*Cell_M + wColIdx/Cell_m
+					descriptor[rowIdx][colIdx][cellIdxInDescriptor].Add(weightedGradient)
+				}
+			}
+		}
+	}
+
+	for rowIdx, rowData := range descriptor {
+		for colIdx, datum := range rowData {
+			normalizedDescriptor[rowIdx][colIdx] = normalizeDescriptor(datum)
+		}
+	}
+
+	return
+}
+
+func WtlOneFrameFromStart() {
+	var normalizedDescriptorA [3][][][]float64
+	var normalizedDescriptorB [3][][][]float64
+	width, height := 0, 0
+	var S_0 = 32
+	var blockNumOneDescriptor = Cell_M * Cell_m
+
+	read2FrameFromSameVideo(param.alignedAFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+		width, height = int(w), int(h)
+		for i := 0; i < 3; i++ {
+			blockSize := (S_0 << i) / blockNumOneDescriptor
+			blockGradient := __getQG(width, height, blockSize, a, b, x, y, t)
+			normalizedDescriptorA[i] = __getDes(blockGradient, blockNumOneDescriptor, weightsWithDistance[i])
+		}
+	})
+
+	read2FrameFromSameVideo(param.alignedBFile, func(w, h float64, a, b, x, y, t *gocv.Mat) {
+		width, height = int(w), int(h)
+		for i := 0; i < 3; i++ {
+			blockSize := (S_0 << i) / blockNumOneDescriptor
+			blockGradient := __getQG(width, height, blockSize, a, b, x, y, t)
+			normalizedDescriptorB[i] = __getDes(blockGradient, blockNumOneDescriptor, weightsWithDistance[i])
+		}
+	})
+
+	var wtls [3][][]float64
+	var wtlFullImgs [3][][]float64
+	for i := 0; i < 3; i++ {
+		var descRowLen = len(normalizedDescriptorA[i])
+		wtls[i] = make([][]float64, descRowLen)
+
+		for rowIdx := 0; rowIdx < descRowLen; rowIdx++ {
+			var descColLen = len(normalizedDescriptorA[i][rowIdx])
+			wtls[i][rowIdx] = make([]float64, descColLen)
+			for colIdx := 0; colIdx < descColLen; colIdx++ {
+				wtls[i][rowIdx][colIdx] = calculateEuclideanDistance(normalizedDescriptorA[i][rowIdx][colIdx], normalizedDescriptorB[i][rowIdx][colIdx])
+			}
+		}
+		wtlFullImgs[i] = applyBiLinearInterpolationToFullFrame(wtls[i], width, height, S_0<<i)
+	}
+
+	finalMap := make([][]float64, height)
+	for rowIdx := 0; rowIdx < height; rowIdx++ {
+		finalMap[rowIdx] = make([]float64, width)
+		for colIdx := 0; colIdx < width; colIdx++ {
+			finalMap[rowIdx][colIdx] = wtlFullImgs[0][rowIdx][colIdx] + 2*wtlFullImgs[1][rowIdx][colIdx] + 4*wtlFullImgs[2][rowIdx][colIdx]
+		}
+	}
+
+	var normalizedMap = normalizeImage(finalMap)
+	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json"), normalizedMap)
+	__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json.png"))
 }

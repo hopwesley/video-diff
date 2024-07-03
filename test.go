@@ -291,7 +291,7 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 
 	case 39:
-		WtlMoreTry()
+		WtlOneFrameFromStart()
 		return
 	}
 }
