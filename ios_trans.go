@@ -2041,17 +2041,30 @@ func WtlFromBiLinearFullMap(idx int) {
 	__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_full_combined_one_frame_level.json_%d.png", idx))
 }
 
-func __getQG(width, height, blockSize int, a, b, x, y, t *gocv.Mat) (blockGradient [][]Histogram) {
+func __getQG(width, height, blockSize int, grayFramePre, grayFrame *gocv.Mat) (blockGradient [][]Histogram) {
+
+	gradX := gocv.NewMat()
+	gradY := gocv.NewMat()
+	gradT := gocv.NewMat()
+
+	gocv.Sobel(*grayFrame, &gradX, gocv.MatTypeCV16S, 1, 0, 3, 1, 0, gocv.BorderDefault)
+	gocv.Sobel(*grayFrame, &gradY, gocv.MatTypeCV16S, 0, 1, 3, 1, 0, gocv.BorderDefault)
+	gocv.AbsDiff(*grayFrame, *grayFramePre, &gradT)
+
 	var colsOfBlock = (width + blockSize - 1) / blockSize
 	var rowsOfBlock = (height + blockSize - 1) / blockSize
 	blockGradient = make([][]Histogram, rowsOfBlock)
 	for rowIdx := 0; rowIdx < rowsOfBlock; rowIdx++ {
 		blockGradient[rowIdx] = make([]Histogram, colsOfBlock)
 		for colIdx := 0; colIdx < colsOfBlock; colIdx++ {
-			hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, x, y, t)
+			hg := quantizeGradientOfBlock(rowIdx, colIdx, blockSize, width, height, &gradX, &gradY, &gradT)
 			blockGradient[rowIdx][colIdx] = hg
 		}
 	}
+
+	gradX.Close()
+	gradY.Close()
+	gradT.Close()
 
 	return
 }
@@ -2106,7 +2119,7 @@ func WtlOneFrameFromStart() {
 		width, height = int(w), int(h)
 		for i := 0; i < 3; i++ {
 			blockSize := (S_0 << i) / blockNumOneDescriptor
-			blockGradient := __getQG(width, height, blockSize, a, b, x, y, t)
+			blockGradient := __getQG(width, height, blockSize, a, b)
 			normalizedDescriptorA[i] = __getDes(blockGradient, blockNumOneDescriptor, weightsWithDistance[i])
 		}
 		grayFrameA = a
@@ -2116,7 +2129,7 @@ func WtlOneFrameFromStart() {
 		width, height = int(w), int(h)
 		for i := 0; i < 3; i++ {
 			blockSize := (S_0 << i) / blockNumOneDescriptor
-			blockGradient := __getQG(width, height, blockSize, a, b, x, y, t)
+			blockGradient := __getQG(width, height, blockSize, a, b)
 			normalizedDescriptorB[i] = __getDes(blockGradient, blockNumOneDescriptor, weightsWithDistance[i])
 		}
 
@@ -2268,4 +2281,116 @@ func calculatePercentiles(mat gocv.Mat, lowPerc, highPerc float64) (float64, flo
 	}
 
 	return float64(lowVal), float64(highVal)
+}
+
+func NewCompareVideo(max int) {
+	now := time.Now()
+	videoA, videoB, err := readFile(param.alignedAFile, param.alignedBFile)
+	if err != nil {
+		panic(err)
+	}
+	var descriptorSideSizeAtZeroLevel = 32
+	width := int(videoA.Get(gocv.VideoCaptureFrameWidth))
+	height := int(videoA.Get(gocv.VideoCaptureFrameHeight))
+	fps := videoA.Get(gocv.VideoCaptureFPS)
+	fmt.Println("fps:", fps, param.alignedAFile, param.alignedBFile)
+	videoWriter, _ := gocv.VideoWriterFile(
+		"tmp/ios/overlays/overlay_result.mp4", // 输出视频文件
+		"mp4v",                                // 编码格式
+		fps,                                   // FPS
+		int(width),                            // 视频宽度
+		int(height),                           // 视频高度
+		true)                                  // 是否彩色
+	defer videoWriter.Close()
+	var counter = 0
+	var preFrameA *gocv.Mat = nil
+	var preFrameB *gocv.Mat = nil
+
+	for {
+		var frameA = gocv.NewMat()
+		var frameB = gocv.NewMat()
+		if ok := videoA.Read(&frameA); !ok || frameA.Empty() {
+			frameA.Close()
+			break
+		}
+		if ok := videoB.Read(&frameB); !ok || frameB.Empty() {
+			videoB.Close()
+			break
+		}
+
+		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
+		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
+		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+		frameA.Close()
+		frameB.Close()
+		var blockNumOneDescriptor = Cell_M * Cell_m
+
+		if preFrameA == nil || preFrameB == nil {
+			preFrameA = &grayFrameA
+			preFrameB = &grayFrameB
+			fmt.Println("start get first frame")
+			continue
+		}
+
+		var finalMap = make([][]float64, height)
+		for i := 0; i < height; i++ {
+			finalMap[i] = make([]float64, width)
+		}
+
+		for level := 0; level < 3; level++ {
+			sideSize := descriptorSideSizeAtZeroLevel << level
+			timer := 1 << level
+			blockSize := sideSize / blockNumOneDescriptor
+
+			var blockGradientA = __getQG(width, height, blockSize, preFrameA, &grayFrameA)
+			var blockGradientB = __getQG(width, height, blockSize, preFrameB, &grayFrameB)
+			var normalizedDescriptorA = __getDes(blockGradientA, blockNumOneDescriptor, weightsWithDistance[level])
+			var normalizedDescriptorB = __getDes(blockGradientB, blockNumOneDescriptor, weightsWithDistance[level])
+
+			var descRowLen = len(normalizedDescriptorA)
+			var wtl = make([][]float64, descRowLen)
+			for rowIdx := 0; rowIdx < descRowLen; rowIdx++ {
+				var descColLen = len(normalizedDescriptorA[rowIdx])
+				wtl[rowIdx] = make([]float64, descColLen)
+				for colIdx := 0; colIdx < descColLen; colIdx++ {
+					wtl[rowIdx][colIdx] = calculateEuclideanDistance(normalizedDescriptorA[rowIdx][colIdx], normalizedDescriptorB[rowIdx][colIdx])
+				}
+			}
+
+			var wtlFullImg = applyBiLinearInterpolationToFullFrame(wtl, width, height, sideSize)
+			for rowIdx := 0; rowIdx < height; rowIdx++ {
+				for colIdx := 0; colIdx < width; colIdx++ {
+					finalMap[rowIdx][colIdx] += wtlFullImg[rowIdx][colIdx] * float64(timer)
+				}
+			}
+		}
+		var normalizedMap = normalizeImage(finalMap)
+		var gradientMagnitude = computeG2(grayFrameB)
+		img := overlay2(grayFrameA, normalizedMap, gradientMagnitude)
+		if max > 0 {
+			__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_%d.json.png", counter))
+			file, _ := os.Create(fmt.Sprintf("tmp/ios/overlays/cpu_one_frame_overlay_%d.png", counter))
+			_ = png.Encode(file, img)
+			_ = file.Close()
+		}
+		mat, err := gocv.ImageToMatRGB(img)
+		if err != nil {
+			panic(err)
+		}
+		_ = videoWriter.Write(mat)
+
+		mat.Close()
+		preFrameA.Close()
+		preFrameB.Close()
+		preFrameA = &grayFrameA
+		preFrameB = &grayFrameB
+
+		fmt.Println("finish frame:", counter)
+		counter++
+
+		if counter >= max && max > 0 {
+			break
+		}
+	}
+	fmt.Println("time used:", time.Now().Sub(now))
 }

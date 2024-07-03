@@ -295,7 +295,7 @@ func testRun(_ *cobra.Command, _ []string) {
 		return
 
 	case 40:
-
+		NewCompareVideo(-10)
 		return
 	}
 }
