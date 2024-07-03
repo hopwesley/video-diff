@@ -2194,8 +2194,8 @@ func computeG2(grayFrameB gocv.Mat) [][]float64 {
 func overlay2(frameA gocv.Mat, wtVal, gradientMagnitude [][]float64) image.Image {
 	width := frameA.Cols()
 	height := frameA.Rows()
-	adjustedFrame := adjustContrast(frameA, testTool.betaLow, testTool.betaHigh)
-
+	adjustedFrame := adjustContrastAndMap(frameA, testTool.betaLow, testTool.betaHigh)
+	//__saveImg(adjustedFrame, "tmp/ios/adjustedFrame.png")
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
@@ -2203,7 +2203,6 @@ func overlay2(frameA gocv.Mat, wtVal, gradientMagnitude [][]float64) image.Image
 			heatMapColor := fc(score)
 			g := gradientMagnitude[y][x]
 			grayValue := adjustedFrame[y][x]
-			//grayValue := float64(frameA.GetUCharAt(y, x)) * 0.5
 			vColor := color.RGBA{
 				R: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.R)),
 				G: uint8((1-g)*grayValue*255 + g*float64(heatMapColor.G)),
@@ -2214,4 +2213,59 @@ func overlay2(frameA gocv.Mat, wtVal, gradientMagnitude [][]float64) image.Image
 		}
 	}
 	return img
+}
+
+func adjustContrastAndMap(frame gocv.Mat, betaLow, betaHigh float64) [][]float64 {
+	// 计算百分位数
+	I_low, I_high := calculatePercentiles(frame, 1, 99)
+
+	rows, cols := frame.Rows(), frame.Cols()
+	mappedFrame := make([][]float64, rows)
+	for y := 0; y < rows; y++ {
+		mappedFrame[y] = make([]float64, cols)
+		for x := 0; x < cols; x++ {
+			val := float64(frame.GetUCharAt(y, x))
+			// 根据百分位数调整对比度并进行映射
+			if val < I_low {
+				val = betaLow
+			} else if val > I_high {
+				val = betaHigh
+			} else {
+				val = betaLow + (betaHigh-betaLow)*(val-I_low)/(I_high-I_low)
+			}
+			// 保证结果在0-1范围内，映射到0-255后转换为float64以便后续处理
+			mappedFrame[y][x] = val
+		}
+	}
+	return mappedFrame
+}
+
+// 计算给定百分位的像素值，简化实现，实际应用需要更复杂的直方图或排序算法
+func calculatePercentiles(mat gocv.Mat, lowPerc, highPerc float64) (float64, float64) {
+	hist := make([]int, 256)
+	rows, cols := mat.Rows(), mat.Cols()
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			v := mat.GetUCharAt(y, x)
+			hist[v]++
+		}
+	}
+
+	total := rows * cols
+	lowCount := int(float64(total) * lowPerc / 100)
+	highCount := int(float64(total) * highPerc / 100)
+
+	lowVal, highVal := 0, 255
+	cumulative := 0
+	for i, count := range hist {
+		cumulative += count
+		if cumulative <= lowCount {
+			lowVal = i
+		}
+		if cumulative <= highCount {
+			highVal = i
+		}
+	}
+
+	return float64(lowVal), float64(highVal)
 }

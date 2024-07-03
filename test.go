@@ -907,15 +907,14 @@ func fc(score float64) color.RGBA {
 	if score > 1 || score < 0 {
 		panic(fmt.Sprintf("invalid score:%.2f", score))
 	}
-
-	// 定义颜色值
 	lowColor := color.RGBA{R: 255, G: 253, B: 175, A: 255}
 	highColor := color.RGBA{R: 255, G: 0, B: 0, A: 255}
-
-	// 根据分数进行颜色插值
-	interpolatedColor := linearInterpolation(lowColor, highColor, score)
-
-	return interpolatedColor
+	return color.RGBA{
+		R: uint8(float64(lowColor.R)*(1-score) + float64(highColor.R)*score),
+		G: uint8(float64(lowColor.G)*(1-score) + float64(highColor.G)*score),
+		B: uint8(float64(lowColor.B)*(1-score) + float64(highColor.B)*score),
+		A: 255, // Alpha值保持不变，总是不透明
+	}
 }
 
 func ComputeFC() {
