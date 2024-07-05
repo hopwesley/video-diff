@@ -887,8 +887,21 @@ func compareTestA() {
 	//readJson("tmp/ios/gpu_average_block_4_2.json", &avgQG)
 	//__histogramToImg(avgQG, "tmp/ios/gpu_average_block_4_2.json.png")
 }
+func compareTestB() {
+	var normalizedDescriptor [][][]float64
+	readJson("tmp/ios/gpu_descriptor_2_a_level_0.json", &normalizedDescriptor)
+	__histogramToImgFloat(normalizedDescriptor, fmt.Sprintf("tmp/ios/gpu_descriptor_2_a_level_0.json.png"))
+
+	readJson("tmp/ios/gpu_descriptor_2_a_level_1.json", &normalizedDescriptor)
+	__histogramToImgFloat(normalizedDescriptor, fmt.Sprintf("tmp/ios/gpu_descriptor_2_a_level_1.json.png"))
+
+	readJson("tmp/ios/gpu_descriptor_2_a_level_2.json", &normalizedDescriptor)
+	__histogramToImgFloat(normalizedDescriptor, fmt.Sprintf("tmp/ios/gpu_descriptor_2_a_level_2.json.png"))
+}
+
 func CommTest() {
-	compareTestA()
+	//compareTestA()
+	compareTestB()
 	//var sigma = 1.0
 	//alignTestA()
 	//alignTestB()
