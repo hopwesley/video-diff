@@ -876,10 +876,21 @@ func alignTestF() {
 	saveJson("tmp/ios/ciphered_cpu_frame_histogram_A.json", cipheredAQ)
 	saveJson("tmp/ios/ciphered_cpu_frame_histogram_B.json", cipheredBQ)
 }
-
+func compareTestA() {
+	histogramToImg("tmp/ios/gpu_average_block_2_a_level_0.json")
+	histogramToImg("tmp/ios/gpu_average_block_2_a_level_1.json")
+	histogramToImg("tmp/ios/gpu_average_block_2_a_level_2.json")
+	histogramToImg("tmp/ios/gpu_average_block_2_b_level_0.json")
+	histogramToImg("tmp/ios/gpu_average_block_2_b_level_1.json")
+	histogramToImg("tmp/ios/gpu_average_block_2_b_level_2.json")
+	//var avgQG [][]Histogram
+	//readJson("tmp/ios/gpu_average_block_4_2.json", &avgQG)
+	//__histogramToImg(avgQG, "tmp/ios/gpu_average_block_4_2.json.png")
+}
 func CommTest() {
+	compareTestA()
 	//var sigma = 1.0
-	alignTestA()
+	//alignTestA()
 	//alignTestB()
 	//alignTestC()
 	//alignTestD()
