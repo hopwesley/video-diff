@@ -899,9 +899,21 @@ func compareTestB() {
 	__histogramToImgFloat(normalizedDescriptor, fmt.Sprintf("tmp/ios/gpu_descriptor_2_a_level_2.json.png"))
 }
 
+func compareTestC() {
+	var wtl [][]float64
+	readJson("tmp/ios/gpu_wtl_2_level_0.json", &wtl)
+	__saveNormalizedData(normalizeImage(wtl), fmt.Sprintf("tmp/ios/gpu_wtl_2_level_0.json.png"))
+	readJson("tmp/ios/gpu_wtl_2_level_1.json", &wtl)
+	__saveNormalizedData(normalizeImage(wtl), fmt.Sprintf("tmp/ios/gpu_wtl_2_level_1.json.png"))
+	readJson("tmp/ios/gpu_wtl_2_level_2.json", &wtl)
+	__saveNormalizedData(normalizeImage(wtl), fmt.Sprintf("tmp/ios/gpu_wtl_2_level_2.json.png"))
+
+}
+
 func CommTest() {
 	//compareTestA()
-	compareTestB()
+	//compareTestB()
+	compareTestC()
 	//var sigma = 1.0
 	//alignTestA()
 	//alignTestB()
