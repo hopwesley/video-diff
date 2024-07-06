@@ -909,11 +909,21 @@ func compareTestC() {
 	__saveNormalizedData(normalizeImage(wtl), fmt.Sprintf("tmp/ios/gpu_wtl_2_level_2.json.png"))
 
 }
+func compareTestD() {
+	var fullImg [][]float64
+	readJson("tmp/ios/gpu_wtl_2_billinear_0.json", &fullImg)
+	__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_0.json.png"))
+	readJson("tmp/ios/gpu_wtl_2_billinear_1.json", &fullImg)
+	__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_1.json.png"))
+	readJson("tmp/ios/gpu_wtl_2_billinear_2.json", &fullImg)
+	__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_2.json.png"))
+}
 
 func CommTest() {
 	//compareTestA()
 	//compareTestB()
 	compareTestC()
+	compareTestD()
 	//var sigma = 1.0
 	//alignTestA()
 	//alignTestB()
