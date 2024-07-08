@@ -911,19 +911,73 @@ func compareTestC() {
 }
 func compareTestD() {
 	var fullImg [][]float64
-	readJson("tmp/ios/gpu_wtl_2_billinear_0.json", &fullImg)
-	__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_0.json.png"))
-	readJson("tmp/ios/gpu_wtl_2_billinear_1.json", &fullImg)
-	__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_1.json.png"))
-	readJson("tmp/ios/gpu_wtl_2_billinear_2.json", &fullImg)
-	__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_2.json.png"))
+	err := readJson("tmp/ios/gpu_wtl_2_billinear_0.json", &fullImg)
+	if err == nil {
+		__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_0.json.png"))
+	}
+	err = readJson("tmp/ios/gpu_wtl_2_billinear_1.json", &fullImg)
+	if err == nil {
+		__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_1.json.png"))
+	}
+	err = readJson("tmp/ios/gpu_wtl_2_billinear_2.json", &fullImg)
+	if err == nil {
+		__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_2.json.png"))
+	}
+
+	err = readJson("tmp/ios/gpu_gradient_magnitude_2_.json", &fullImg)
+	if err == nil {
+		__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_gradient_magnitude_2_.json.png"))
+	}
+}
+
+func compareTestE() {
+	var fullImg [][]float64
+	err := readJson("tmp/ios/gpu_wtl_2_billinear_final_.json", &fullImg)
+	if err == nil {
+		__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_final_.json.png"))
+	}
+	readJson("tmp/ios/gpu_wtl_2_billinear_final_normalized_.json", &fullImg)
+	__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_wtl_2_billinear_final_normalized_.json.png"))
+
+	err = readJson("tmp/ios/gpu_adjust_map_2_.json", &fullImg)
+	if err == nil {
+		__saveNormalizedData(normalizeImage(fullImg), fmt.Sprintf("tmp/ios/gpu_adjust_map_2_.json.png"))
+	}
+}
+
+func compareTestF() {
+	hist := make([][]int, 256)
+	err := readJson("tmp/ios/gpu_percentile_2_histogram_.json", &hist)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	total := 1280 * 720
+	lowCount := int(float64(total) * 1 / 100)
+	highCount := int(float64(total) * 99 / 100)
+	lowVal, highVal := 0, 255
+	cumulative := 0
+	for i, count := range hist[0] {
+		cumulative += count
+		if cumulative <= lowCount {
+			lowVal = i
+		}
+		if cumulative <= highCount {
+			highVal = i
+		}
+	}
+
+	fmt.Println("lowVal:", lowVal, "highVal:", highVal)
 }
 
 func CommTest() {
 	//compareTestA()
 	//compareTestB()
-	compareTestC()
-	compareTestD()
+	//compareTestC()
+	//compareTestD()
+	compareTestE()
+	compareTestF()
 	//var sigma = 1.0
 	//alignTestA()
 	//alignTestB()
@@ -2182,6 +2236,8 @@ func WtlOneFrameFromStart() {
 		//gradientMagnitude = computeG(*b)
 		gradientMagnitude = computeG2(*b)
 
+		saveJson("tmp/ios/cpu_gradient_magnitude_.json", gradientMagnitude)
+		__saveNormalizedData(normalizeImage(gradientMagnitude), "tmp/ios/cpu_gradient_magnitude_.json.png")
 		b.Close()
 	})
 
@@ -2254,7 +2310,8 @@ func overlay2(frameA gocv.Mat, wtVal, gradientMagnitude [][]float64) image.Image
 	width := frameA.Cols()
 	height := frameA.Rows()
 	adjustedFrame := adjustContrastAndMap(frameA, testTool.betaLow, testTool.betaHigh)
-	//__saveImg(adjustedFrame, "tmp/ios/adjustedFrame.png")
+	saveJson("tmp/ios/adjustedFrame.json", adjustedFrame)
+	__saveNormalizedData(adjustedFrame, "tmp/ios/adjustedFrame.json.png")
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	for y := 0; y < height; y++ {
 		for x := 0; x < width; x++ {
@@ -2277,7 +2334,7 @@ func overlay2(frameA gocv.Mat, wtVal, gradientMagnitude [][]float64) image.Image
 func adjustContrastAndMap(frame gocv.Mat, betaLow, betaHigh float64) [][]float64 {
 	// 计算百分位数
 	I_low, I_high := calculatePercentiles(frame, 1, 99)
-
+	fmt.Println("------>>>low:", I_low, "hight", I_high)
 	rows, cols := frame.Rows(), frame.Cols()
 	mappedFrame := make([][]float64, rows)
 	for y := 0; y < rows; y++ {
@@ -2313,6 +2370,7 @@ func calculatePercentiles(mat gocv.Mat, lowPerc, highPerc float64) (float64, flo
 	total := rows * cols
 	lowCount := int(float64(total) * lowPerc / 100)
 	highCount := int(float64(total) * highPerc / 100)
+	fmt.Println("total pixel:", total, "low:", lowCount, "high:", highCount)
 
 	lowVal, highVal := 0, 255
 	cumulative := 0
@@ -2325,7 +2383,7 @@ func calculatePercentiles(mat gocv.Mat, lowPerc, highPerc float64) (float64, flo
 			highVal = i
 		}
 	}
-
+	saveJson("tmp/ios/cpu_percentile_2_histogram_.json", hist)
 	return float64(lowVal), float64(highVal)
 }
 

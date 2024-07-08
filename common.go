@@ -310,7 +310,17 @@ func saveGrayDataToImg(data [][]uint8, fileName string) bool {
 	}
 	return gocv.IMWrite(fileName, img)
 }
-
+func saveGrayFloatDataToImg(data [][]float64, fileName string) bool {
+	height := len(data)
+	width := len(data[0])
+	img := gocv.NewMatWithSize(height, width, gocv.MatTypeCV8U)
+	for y, row := range data {
+		for x, val := range row {
+			img.SetUCharAt(y, x, uint8(val))
+		}
+	}
+	return gocv.IMWrite(fileName, img)
+}
 func saveJson(fileName string, data any) {
 	file, _ := os.Create(fileName)
 	dataBytes, _ := json.Marshal(data)
