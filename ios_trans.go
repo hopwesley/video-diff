@@ -971,13 +971,78 @@ func compareTestF() {
 	fmt.Println("lowVal:", lowVal, "highVal:", highVal)
 }
 
+func compareTestG() {
+	var frameA [][]uint8
+	readJson("tmp/ios/gpu_gray_frameA_2_.json", &frameA)
+	saveGrayDataToImg(frameA, "tmp/ios/gpu_gray_frameA_2_.json.png")
+
+	var gradientMagnitude [][]float64
+	readJson("tmp/ios/gpu_gradient_magnitude_2_.json", &gradientMagnitude)
+	__saveNormalizedData(normalizeImage(gradientMagnitude), "tmp/ios/gpu_gradient_magnitude_2_.json.png")
+
+	var normalizedMap [][]float64
+	readJson("tmp/ios/gpu_wtl_2_billinear_final_normalized_.json", &normalizedMap)
+	__saveNormalizedData(normalizeImage(normalizedMap), "tmp/ios/gpu_wtl_2_billinear_final_normalized_.json.png")
+
+	// 预先分配 byteSlice 的容量
+	rows := len(frameA)
+	cols := len(frameA[0])
+	byteSlice := make([]byte, 0, rows*cols)
+
+	// 将 frameA 的数据追加到 byteSlice
+	for _, row := range frameA {
+		byteSlice = append(byteSlice, row...)
+	}
+
+	// 从字节数组创建 Mat
+	mat, err := gocv.NewMatFromBytes(rows, cols, gocv.MatTypeCV8U, byteSlice)
+	if err != nil {
+		panic(err)
+	}
+	defer mat.Close()
+	//__saveImg(mat, "tmp/ios/gpu_gray_frameA_2_2.json.png")
+
+	var adjustedFrame [][]float64
+	readJson("tmp/ios/gpu_adjust_map_2_.json", &adjustedFrame)
+	__saveNormalizedData(adjustedFrame, "tmp/ios/gpu_adjust_map_2_.json.png")
+
+	img := overlay2(mat, normalizedMap, gradientMagnitude)
+
+	file, _ := os.Create(fmt.Sprintf("tmp/ios/gpu_one_frame_overlay.png"))
+	_ = png.Encode(file, img)
+	_ = file.Close()
+
+	var gpuImgData [][][]float64
+	readJson("tmp/ios/gpu_onverlay_image_raw_2_.json", &gpuImgData)
+
+	var height = len(gpuImgData)
+	var width = len(gpuImgData[0])
+	gpuImg := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			vColor := color.RGBA{
+				R: uint8(gpuImgData[y][x][0] * 255.0),
+				G: uint8(gpuImgData[y][x][1] * 255.0),
+				B: uint8(gpuImgData[y][x][2] * 255.0),
+				A: uint8(gpuImgData[y][x][3] * 255.0),
+			}
+			gpuImg.Set(x, y, vColor)
+		}
+	}
+
+	file, _ = os.Create(fmt.Sprintf("tmp/ios/gpu_onverlay_image_raw_2_.json.png"))
+	_ = png.Encode(file, img)
+	_ = file.Close()
+}
+
 func CommTest() {
 	//compareTestA()
 	//compareTestB()
 	//compareTestC()
 	//compareTestD()
-	compareTestE()
-	compareTestF()
+	//compareTestE()
+	//compareTestF()
+	compareTestG()
 	//var sigma = 1.0
 	//alignTestA()
 	//alignTestB()
@@ -2235,9 +2300,6 @@ func WtlOneFrameFromStart() {
 
 		//gradientMagnitude = computeG(*b)
 		gradientMagnitude = computeG2(*b)
-
-		saveJson("tmp/ios/cpu_gradient_magnitude_.json", gradientMagnitude)
-		__saveNormalizedData(normalizeImage(gradientMagnitude), "tmp/ios/cpu_gradient_magnitude_.json.png")
 		b.Close()
 	})
 
@@ -2269,7 +2331,10 @@ func WtlOneFrameFromStart() {
 	saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json"), normalizedMap)
 	__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_.json.png"))
 
-	//img := overlay(*grayFrameA, normalizedMap, gradientMagnitude)
+	saveJson("tmp/ios/overlays/cpu_gradient_magnitude_.json", gradientMagnitude)
+	__saveNormalizedData(normalizeImage(gradientMagnitude), "tmp/ios/overlays/cpu_gradient_magnitude_.json.png")
+
+	__saveImg(*grayFrameA, "tmp/ios/overlays/cpu_gray_frameA.png")
 	img := overlay2(*grayFrameA, normalizedMap, gradientMagnitude)
 
 	file, _ := os.Create(fmt.Sprintf("tmp/ios/overlays/cpu_one_frame_overlay.png"))
