@@ -2316,6 +2316,9 @@ func WtlOneFrameFromStart() {
 				wtls[i][rowIdx][colIdx] = calculateEuclideanDistance(normalizedDescriptorA[i][rowIdx][colIdx], normalizedDescriptorB[i][rowIdx][colIdx])
 			}
 		}
+
+		saveJson(fmt.Sprintf("tmp/ios/overlays/cpu_wtl_level_%d_.json", i), wtls[i])
+		__saveNormalizedData(normalizeImage(wtls[i]), fmt.Sprintf("tmp/ios/overlays/cpu_wtl_level_%d_.json.png", i))
 		wtlFullImgs[i] = applyBiLinearInterpolationToFullFrame(wtls[i], width, height, S_0<<i)
 	}
 
