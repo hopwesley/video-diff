@@ -2490,18 +2490,18 @@ func NewCompareVideo(max int) {
 			break
 		}
 
-		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
-		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
-		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+		grayOrigFrameA, grayOrigFrameB := gocv.NewMat(), gocv.NewMat()
+		gocv.CvtColor(frameA, &grayOrigFrameA, gocv.ColorRGBToGray)
+		gocv.CvtColor(frameB, &grayOrigFrameB, gocv.ColorRGBToGray)
 
 		//__saveImg(grayFrameA, fmt.Sprintf("tmp/ios/overlays/cpu_graya_org_%d.png", counter))
 		//__saveImg(grayFrameB, fmt.Sprintf("tmp/ios/overlays/cpu_grayb_org_%d.png", counter))
-		//
-		//grayFrameA = SegmentForeground(grayFrameA)
-		//grayFrameB = SegmentForeground(grayFrameB)
-		//
-		//__saveImg(grayFrameA, fmt.Sprintf("tmp/ios/overlays/cpu_graya_seg_%d.png", counter))
-		//__saveImg(grayFrameB, fmt.Sprintf("tmp/ios/overlays/cpu_grayb_seg_%d.png", counter))
+
+		var grayFrameA = SegmentForeground(grayOrigFrameA)
+		var grayFrameB = SegmentForeground(grayOrigFrameB)
+
+		__saveImg(grayFrameA, fmt.Sprintf("tmp/ios/overlays/cpu_graya_seg_%d.png", counter))
+		__saveImg(grayFrameB, fmt.Sprintf("tmp/ios/overlays/cpu_grayb_seg_%d.png", counter))
 
 		frameA.Close()
 		frameB.Close()
@@ -2551,11 +2551,15 @@ func NewCompareVideo(max int) {
 			preFinalMap = finalMap
 			continue
 		}
-		filteredFinalMap := simulateTemporalHighPassFilter(finalMap, preFinalMap, 10.2)
-		//var normalizedMap = normalizeImage(finalMap)
-		var normalizedMap = normalizeImage(filteredFinalMap)
-		var gradientMagnitude = computeG2(grayFrameB)
-		img := overlay2(grayFrameA, normalizedMap, gradientMagnitude)
+		//filteredFinalMap := simulateTemporalHighPassFilter(finalMap, preFinalMap, 0.8)
+
+		//fMat := convertFloat64ArrayToMat32F(filteredFinalMap)
+		//fMat = applyBilateralFilterToW(fMat)
+		//filteredFinalMap = matToFloat64Array32F(fMat)
+		var normalizedMap = normalizeImage(finalMap)
+		//var normalizedMap = normalizeImage(filteredFinalMap)
+		var gradientMagnitude = computeG2(grayOrigFrameB)
+		img := overlay2(grayOrigFrameA, normalizedMap, gradientMagnitude)
 		if max > 0 {
 			__saveNormalizedData(normalizedMap, fmt.Sprintf("tmp/ios/overlays/cpu_wtl_final_%d.json.png", counter))
 			file, _ := os.Create(fmt.Sprintf("tmp/ios/overlays/cpu_one_frame_overlay_%d.png", counter))
@@ -2591,7 +2595,7 @@ func SegmentForeground(grayFrame gocv.Mat) gocv.Mat {
 	defer foregroundMask.Close()
 
 	// 应用阈值处理，阈值可以根据实际情况调整
-	gocv.Threshold(grayFrame, &foregroundMask, 128, 255, gocv.ThresholdBinary)
+	gocv.Threshold(grayFrame, &foregroundMask, 240, 255, gocv.ThresholdBinary)
 
 	return foregroundMask.Clone()
 }
@@ -2649,16 +2653,45 @@ func applyBilateralFilterToW(filteredW gocv.Mat) gocv.Mat {
 
 	return bilateralResult.Clone()
 }
-func convertFloat64ArrayToMat(data [][]float64) gocv.Mat {
+
+func convertFloat64ArrayToMat32F(data [][]float64) gocv.Mat {
 	rows := len(data)
 	cols := len(data[0])
-	mat := gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV64F)
+	mat := gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV32F)
 
 	for i := range data {
 		for j := range data[i] {
-			mat.SetDoubleAt(i, j, data[i][j])
+			mat.SetFloatAt(i, j, float32(data[i][j]))
 		}
 	}
 
 	return mat
+}
+
+// matToFloat64Array32F 从类型为 CV_32F 的 gocv.Mat 中读取数据并转换为 [][]float64
+func matToFloat64Array32F(mat gocv.Mat) [][]float64 {
+	// 确保 Mat 是单通道32位浮点类型
+	if mat.Type() != gocv.MatTypeCV32F {
+		fmt.Println("Mat must be of type CV_32F")
+		return nil
+	}
+
+	// 获取 Mat 的尺寸
+	rows := mat.Rows()
+	cols := mat.Cols()
+
+	// 初始化二维浮点数组
+	arr := make([][]float64, rows)
+	for i := range arr {
+		arr[i] = make([]float64, cols)
+	}
+
+	// 将 Mat 的数据复制到浮点数组
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			arr[i][j] = float64(mat.GetFloatAt(i, j)) // 从 Mat 读取 float32 并转换为 float64
+		}
+	}
+
+	return arr
 }
