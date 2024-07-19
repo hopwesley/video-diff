@@ -2477,7 +2477,7 @@ func NewCompareVideo(max int) {
 	var counter = 0
 	var preFrameA *gocv.Mat = nil
 	var preFrameB *gocv.Mat = nil
-
+	var preFinalMap [][]float64 = nil
 	for {
 		var frameA = gocv.NewMat()
 		var frameB = gocv.NewMat()
@@ -2493,6 +2493,16 @@ func NewCompareVideo(max int) {
 		grayFrameA, grayFrameB := gocv.NewMat(), gocv.NewMat()
 		gocv.CvtColor(frameA, &grayFrameA, gocv.ColorRGBToGray)
 		gocv.CvtColor(frameB, &grayFrameB, gocv.ColorRGBToGray)
+
+		//__saveImg(grayFrameA, fmt.Sprintf("tmp/ios/overlays/cpu_graya_org_%d.png", counter))
+		//__saveImg(grayFrameB, fmt.Sprintf("tmp/ios/overlays/cpu_grayb_org_%d.png", counter))
+		//
+		//grayFrameA = SegmentForeground(grayFrameA)
+		//grayFrameB = SegmentForeground(grayFrameB)
+		//
+		//__saveImg(grayFrameA, fmt.Sprintf("tmp/ios/overlays/cpu_graya_seg_%d.png", counter))
+		//__saveImg(grayFrameB, fmt.Sprintf("tmp/ios/overlays/cpu_grayb_seg_%d.png", counter))
+
 		frameA.Close()
 		frameB.Close()
 		var blockNumOneDescriptor = Cell_M * Cell_m
@@ -2536,7 +2546,14 @@ func NewCompareVideo(max int) {
 				}
 			}
 		}
-		var normalizedMap = normalizeImage(finalMap)
+
+		if preFinalMap == nil {
+			preFinalMap = finalMap
+			continue
+		}
+		filteredFinalMap := simulateTemporalHighPassFilter(finalMap, preFinalMap, 10.2)
+		//var normalizedMap = normalizeImage(finalMap)
+		var normalizedMap = normalizeImage(filteredFinalMap)
 		var gradientMagnitude = computeG2(grayFrameB)
 		img := overlay2(grayFrameA, normalizedMap, gradientMagnitude)
 		if max > 0 {
@@ -2565,4 +2582,83 @@ func NewCompareVideo(max int) {
 		}
 	}
 	fmt.Println("time used:", time.Now().Sub(now))
+}
+
+// SegmentForeground 使用阈值方法分割前景
+func SegmentForeground(grayFrame gocv.Mat) gocv.Mat {
+	// 创建一个新的Mat来存储分割结果
+	foregroundMask := gocv.NewMat()
+	defer foregroundMask.Close()
+
+	// 应用阈值处理，阈值可以根据实际情况调整
+	gocv.Threshold(grayFrame, &foregroundMask, 128, 255, gocv.ThresholdBinary)
+
+	return foregroundMask.Clone()
+}
+
+func TemporalHighPassFilter(currentGrad, previousGrad gocv.Mat) gocv.Mat {
+	// 创建一个新的Mat来存储结果
+	result := gocv.NewMat()
+	defer result.Close()
+
+	// 计算当前帧与前一帧的差异
+	gocv.AbsDiff(currentGrad, previousGrad, &result)
+
+	// 应用阈值，去除微小的变化
+	threshold := 10.0 // 根据实际情况调整此阈值
+	gocv.Threshold(result, &result, float32(threshold), 255, gocv.ThresholdBinary)
+
+	return result.Clone()
+}
+
+// simulateTemporalHighPassFilter 模拟时间高通滤波过程
+func simulateTemporalHighPassFilter(currentW, previousW [][]float64, threshold float64) [][]float64 {
+	height := len(currentW)
+	width := len(currentW[0])
+	filteredW := make([][]float64, height)
+
+	for i := range filteredW {
+		filteredW[i] = make([]float64, width)
+		for j := range filteredW[i] {
+			diff := currentW[i][j] - previousW[i][j]
+			if abs(diff) > threshold {
+				filteredW[i][j] = diff
+			} else {
+				filteredW[i][j] = 0
+			}
+		}
+	}
+	return filteredW
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func applyBilateralFilterToW(filteredW gocv.Mat) gocv.Mat {
+	// 创建结果Mat
+	bilateralResult := gocv.NewMat()
+	defer bilateralResult.Close()
+
+	// 应用双边滤波器
+	// 你可能需要根据实际情况调整双边滤波器的参数
+	gocv.BilateralFilter(filteredW, &bilateralResult, -1, 75.0, 75.0)
+
+	return bilateralResult.Clone()
+}
+func convertFloat64ArrayToMat(data [][]float64) gocv.Mat {
+	rows := len(data)
+	cols := len(data[0])
+	mat := gocv.NewMatWithSize(rows, cols, gocv.MatTypeCV64F)
+
+	for i := range data {
+		for j := range data[i] {
+			mat.SetDoubleAt(i, j, data[i][j])
+		}
+	}
+
+	return mat
 }
