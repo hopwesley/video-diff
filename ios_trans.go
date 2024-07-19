@@ -2499,10 +2499,10 @@ func NewCompareVideo(max int) {
 
 		var grayFrameA = SegmentForeground(grayOrigFrameA)
 		var grayFrameB = SegmentForeground(grayOrigFrameB)
-
-		__saveImg(grayFrameA, fmt.Sprintf("tmp/ios/overlays/cpu_graya_seg_%d.png", counter))
-		__saveImg(grayFrameB, fmt.Sprintf("tmp/ios/overlays/cpu_grayb_seg_%d.png", counter))
-
+		if max > 0 {
+			__saveImg(grayFrameA, fmt.Sprintf("tmp/ios/overlays/cpu_graya_seg_%d.png", counter))
+			__saveImg(grayFrameB, fmt.Sprintf("tmp/ios/overlays/cpu_grayb_seg_%d.png", counter))
+		}
 		frameA.Close()
 		frameB.Close()
 		var blockNumOneDescriptor = Cell_M * Cell_m
